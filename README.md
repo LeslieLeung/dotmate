@@ -12,11 +12,66 @@ Dotmate 是一个用于管理[Quote/0](https://dot.mindreset.tech/product/quote)
 
 ## 快速开始
 
-### 环境要求
+### 方式一：Docker Compose（推荐）
+
+1. 克隆项目：
+```bash
+git clone https://github.com/leslieleung/dotmate
+cd dotmate
+```
+
+2. 复制配置文件模板：
+```bash
+cp config.example.yaml config.yaml
+```
+
+3. 编辑配置文件 `config.yaml`，填入你的 API 密钥和设备信息。
+
+4. 启动服务：
+```bash
+# 启动容器
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
+```
+
+### 方式二：直接使用 Docker
+
+如果你只想快速运行，可以直接使用 Docker 命令：
+
+```bash
+# 拉取镜像
+docker pull ghcr.io/leslieleung/dotmate:latest
+
+# 运行容器（需要提前准备好 config.yaml）
+docker run -d \
+  --name dotmate \
+  --restart unless-stopped \
+  -v $(pwd)/config.yaml:/app/config.yaml:ro \
+  -v $(pwd)/logs:/app/logs \
+  ghcr.io/leslieleung/dotmate:latest
+
+# 查看日志
+docker logs -f dotmate
+
+# 停止容器
+docker stop dotmate
+
+# 删除容器
+docker rm dotmate
+```
+
+### 方式三：本地开发
+
+#### 环境要求
 - Python >= 3.12
 - uv 包管理器（推荐）
 
-### 安装
+#### 安装
 
 ```bash
 # 克隆项目
@@ -27,7 +82,7 @@ cd dotmate
 uv install
 ```
 
-### 配置
+#### 配置
 
 1. 复制配置文件模板：
 ```bash
@@ -36,9 +91,9 @@ cp config.example.yaml config.yaml
 
 2. 编辑配置文件 `config.yaml`，填入你的 API 密钥和设备信息。
 
-### 运行
+#### 运行
 
-#### 启动守护进程
+##### 启动守护进程
 ```bash
 # 启动定时任务调度器
 python main.py daemon
@@ -47,7 +102,7 @@ python main.py daemon
 python main.py
 ```
 
-#### 手动发送消息
+##### 手动发送消息
 ```bash
 # 发送文本消息
 python main.py push mydevice text --message "Hello World" --title "通知"
