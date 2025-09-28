@@ -10,4 +10,5 @@ dependencies = [
     "types-requests>=2.32.0.20240914",
     "pyyaml>=6.0.2",
     "apscheduler>=3.10.4",
+    "pillow>=11.3.0",
 ]

@@ -18,12 +18,23 @@ class DisplayImageRequest(BaseModel):
     image: str = Field(..., description="base64 编码 PNG 图像数据")
     link: Optional[str] = Field(None, description="碰一碰跳转链接")
     border: Optional[int] = Field(None, description="屏幕边缘的颜色编号")
-    ditherType: Optional[Literal["none", "floyd-steinberg", "bayer"]] = Field(
+    ditherType: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = Field(
         None, description="抖动类型"
     )
-    ditherKernel: Optional[Literal["2x2", "4x4", "8x8"]] = Field(
-        None, description="抖动算法"
-    )
+    ditherKernel: Optional[
+        Literal[
+            "THRESHOLD",
+            "ATKINSON",
+            "BURKES",
+            "FLOYD_STEINBERG",
+            "SIERRA2",
+            "STUCKI",
+            "JARVIS_JUDICE_NINKE",
+            "DIFFUSION_ROW",
+            "DIFFUSION_COLUMN",
+            "DIFFUSION2_D",
+        ]
+    ] = Field(None, description="抖动算法")
 
 class ApiResponse(BaseModel):
     message: str

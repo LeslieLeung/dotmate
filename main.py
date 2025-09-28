@@ -84,11 +84,27 @@ def force_push(device_name_or_id: str, scenario: str, config_path: str = "config
     # Execute the scenario using factory pattern
     try:
         if scenario in ViewFactory.get_available_types():
-            # Use schedule params if available, otherwise use provided params
-            if target_schedule and target_schedule.params:
+            # Use provided params if any; otherwise fallback to schedule params
+            if params:
+                scenario_params = params
+            elif target_schedule and target_schedule.params:
                 scenario_params = target_schedule.params
             else:
-                scenario_params = params
+                scenario_params = {}
+
+            # Special handling for image scenario - convert file path to binary data
+            if scenario == "image" and "image_path" in scenario_params:
+                image_path = scenario_params.pop("image_path")
+                try:
+                    with open(image_path, "rb") as f:
+                        scenario_params["image_data"] = f.read()
+                    print(f"Loaded image from: {image_path}")
+                except FileNotFoundError:
+                    print(f"Error: Image file not found: {image_path}")
+                    sys.exit(1)
+                except Exception as e:
+                    print(f"Error reading image file {image_path}: {e}")
+                    sys.exit(1)
 
             print(f"Sending {scenario} message to device '{target_device.name}' ({target_device.device_id})")
             ViewFactory.execute_view(scenario, client, target_device.device_id, scenario_params)
@@ -141,11 +157,44 @@ def main():
     # Force push command
     push_parser = subparsers.add_parser("push", help="Force push update to device")
     push_parser.add_argument("device", help="Device name or device ID")
-    push_parser.add_argument("scenario", help="Scenario type (e.g., work, text, code_status)")
+    push_parser.add_argument(
+        "scenario",
+        help="Scenario type (e.g., work, text, code_status, image, title_image)",
+    )
     push_parser.add_argument("--message", help="Message for text scenario")
     push_parser.add_argument("--title", help="Title for text scenario")
     push_parser.add_argument("--clock-in", help="Clock in time for work scenario")
     push_parser.add_argument("--clock-out", help="Clock out time for work scenario")
+    push_parser.add_argument(
+        "--image-path", help="Path to PNG image file for image scenario"
+    )
+    push_parser.add_argument("--main-title", help="Main title for title_image scenario")
+    push_parser.add_argument("--sub-title", help="Sub title for title_image scenario")
+    push_parser.add_argument("--link", help="Optional link for image scenarios")
+    push_parser.add_argument(
+        "--border", type=int, help="Optional border color for image scenarios"
+    )
+    push_parser.add_argument(
+        "--dither-type",
+        choices=["DIFFUSION", "ORDERED", "NONE"],
+        help="Dither type for image scenarios",
+    )
+    push_parser.add_argument(
+        "--dither-kernel",
+        choices=[
+            "THRESHOLD",
+            "ATKINSON",
+            "BURKES",
+            "FLOYD_STEINBERG",
+            "SIERRA2",
+            "STUCKI",
+            "JARVIS_JUDICE_NINKE",
+            "DIFFUSION_ROW",
+            "DIFFUSION_COLUMN",
+            "DIFFUSION2_D",
+        ],
+        help="Dither kernel for image scenarios",
+    )
 
     args = parser.parse_args()
 
@@ -160,6 +209,20 @@ def main():
             push_params['clock_in'] = args.clock_in
         if args.clock_out:
             push_params['clock_out'] = args.clock_out
+        if args.image_path:
+            push_params["image_path"] = args.image_path
+        if args.main_title:
+            push_params["main_title"] = args.main_title
+        if args.sub_title:
+            push_params["sub_title"] = args.sub_title
+        if args.link:
+            push_params["link"] = args.link
+        if args.border:
+            push_params["border"] = args.border
+        if args.dither_type:
+            push_params["dither_type"] = args.dither_type
+        if args.dither_kernel:
+            push_params["dither_kernel"] = args.dither_kernel
 
         force_push(args.device, args.scenario, args.config, **push_params)
     else:

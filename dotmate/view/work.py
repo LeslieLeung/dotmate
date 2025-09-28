@@ -1,8 +1,7 @@
 from datetime import datetime, time
-from typing import Optional, Type
+from typing import Type
 from pydantic import BaseModel
-from dotmate.api.api import DotClient, DisplayTextRequest
-from dotmate.view.base import BaseView
+from dotmate.view.title_image import TitleImageView, TitleImageParams
 
 
 class WorkParams(BaseModel):
@@ -10,7 +9,7 @@ class WorkParams(BaseModel):
     clock_out: str
 
 
-class WorkView(BaseView):
+class WorkView(TitleImageView):
     """View handler for work countdown messages."""
 
     @classmethod
@@ -38,10 +37,17 @@ class WorkView(BaseView):
         off_work_datetime = datetime.combine(now.date(), clock_out_time)
         time_diff = off_work_datetime - now
 
-        # Convert to hours and minutes
-        total_minutes = int(time_diff.total_seconds() // 60)
-        hours = total_minutes // 60
-        minutes = total_minutes % 60
+        # Convert to hours and minutes (round up to the next minute if there are remaining seconds)
+        total_seconds = int(time_diff.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+
+        # Round up minutes when there are remaining seconds
+        if seconds > 0:
+            minutes += 1
+            if minutes == 60:
+                hours += 1
+                minutes = 0
 
         if hours > 0:
             return f"距下班 {hours} 小时 {minutes} 分钟"
@@ -49,30 +55,22 @@ class WorkView(BaseView):
             return f"距下班 {minutes} 分钟"
 
     def execute(self, params: BaseModel) -> None:
-        """Send work countdown message to device."""
+        """Send work countdown image to device."""
         work_params = WorkParams(**params.model_dump())
-        message = self.calculate_work_status(work_params.clock_in, work_params.clock_out)
+        message = self.calculate_work_status(
+            work_params.clock_in, work_params.clock_out
+        )
+        current_time = datetime.now().strftime("%H:%M")
 
-        # Create display request
-        request = DisplayTextRequest(
-            refreshNow=True,
-            deviceId=self.device_id,
-            title="还有多久下班",
-            message=message,
-            signature=datetime.now().strftime("%H:%M"),
-            icon=None,
+        # Create title image parameters
+        title_image_params = TitleImageParams(
+            main_title="还有多久下班",
+            sub_title=f"{message}\n{current_time}",
             link=None,
+            border=None,
+            dither_type="NONE",
+            dither_kernel=None,
         )
 
-        try:
-            response = self.client.display_text(request)
-            print(f"Work message sent to {self.device_id}: {message} (Response: {response.message})")
-        except Exception as e:
-            print(f"Error sending work message to {self.device_id}: {e}")
-
-
-# Legacy function for backward compatibility
-def send_work_message(client: DotClient, device_id: str, params: WorkParams) -> None:
-    """Send work countdown message to device (legacy function)."""
-    work_view = WorkView(client, device_id)
-    work_view.execute(params)
+        # Use parent's execute method to generate and send image
+        super().execute(title_image_params)

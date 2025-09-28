@@ -4,6 +4,8 @@ from dotmate.view.base import BaseView
 from dotmate.view.work import WorkView
 from dotmate.view.text import TextView
 from dotmate.view.code_status import CodeStatusView
+from dotmate.view.image import ImageView
+from dotmate.view.title_image import TitleImageView
 
 
 class ViewFactory:
@@ -13,6 +15,8 @@ class ViewFactory:
         "work": WorkView,
         "text": TextView,
         "code_status": CodeStatusView,
+        "image": ImageView,
+        "title_image": TitleImageView,
     }
 
     @classmethod

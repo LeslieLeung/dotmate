@@ -15,4 +15,7 @@ wheels/
 .cursor
 .claude
 
+# macOS finder bs
+.DS_Store
+
 config.yaml

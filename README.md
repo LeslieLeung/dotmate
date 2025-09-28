@@ -5,7 +5,7 @@ Dotmate 是一个用于管理[Quote/0](https://dot.mindreset.tech/product/quote)
 ## 功能特性
 
 - 🕐 **定时任务调度**：基于 Cron 表达式的定时任务系统
-- 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态等多种消息类型
+- 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态、图片消息和标题图片生成等多种消息类型
 - 🎯 **多设备管理**：支持管理多个设备，每个设备可配置独立的任务调度
 - 🔧 **灵活配置**：使用 YAML 配置文件管理设备和任务
 - 🚀 **即时推送**：支持手动触发消息推送
@@ -70,6 +70,7 @@ docker rm dotmate
 #### 环境要求
 - Python >= 3.12
 - uv 包管理器（推荐）
+- Pillow 库（用于图片处理）
 
 #### 安装
 
@@ -107,8 +108,14 @@ python main.py
 # 发送文本消息
 python main.py push mydevice text --message "Hello World" --title "通知"
 
-# 发送工作倒计时
+# 发送工作倒计时（生成图片）
 python main.py push mydevice work --clock-in "09:00" --clock-out "18:00"
+
+# 发送自定义图片
+python main.py push mydevice image --image-path "path/to/image.png"
+
+# 发送标题图片（动态生成）
+python main.py push mydevice title_image --main-title "主标题" --sub-title "副标题"
 ```
 
 ## 消息类型
@@ -117,7 +124,23 @@ python main.py push mydevice work --clock-in "09:00" --clock-out "18:00"
 发送自定义文本消息，支持标题和内容。
 
 ### 工作倒计时 (work)
-显示距离下班还有多长时间，支持自定义上班和下班时间。
+显示距离下班还有多长时间，支持自定义上班和下班时间。现在以图片形式显示，支持中文字体渲染。
+
+### 图片消息 (image)
+发送 PNG 格式的图片文件到设备。支持以下参数：
+- `image_path`: 图片文件路径
+- `link`: 可选的跳转链接
+- `border`: 可选的边框颜色
+- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
+- `dither_kernel`: 抖动算法（多种选项）
+
+### 标题图片 (title_image)
+动态生成包含标题的图片消息。支持以下参数：
+- `main_title`: 主标题（必填）
+- `sub_title`: 副标题（可选）
+- 支持中文字体渲染和自动字体大小调整
+- 支持文本自动换行
+- 其他图片相关参数同 image 类型
 
 ### 代码状态 (code_status)
 显示代码状态信息（开发中）。
