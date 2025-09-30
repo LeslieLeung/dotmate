@@ -2,7 +2,6 @@ import io
 from typing import Optional, Type, Literal, Union
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from dotmate.font import FontManager
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -29,10 +28,6 @@ class TitleImageParams(BaseModel):
 class TitleImageView(ImageView):
     """View handler for generating and displaying title images."""
 
-    def __init__(self, client, device_id: str):
-        super().__init__(client, device_id)
-        self.font_manager = FontManager()
-
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
         """Return the parameters class for this view."""
@@ -44,7 +39,7 @@ class TitleImageView(ImageView):
         try:
             font_size = initial_size
             while font_size >= min_size:
-                test_font = self.font_manager.get_font(font_size)
+                test_font = self._get_font(font_size)
 
                 # Create temporary draw to measure text
                 temp_img = Image.new('1', (1, 1), 1)
@@ -152,8 +147,8 @@ class TitleImageView(ImageView):
                 )
 
                 # Create fonts
-                main_font = self.font_manager.get_font(main_font_size)
-                sub_font = self.font_manager.get_font(sub_font_size)
+                main_font = self._get_font(main_font_size)
+                sub_font = self._get_font(sub_font_size)
 
                 # Wrap text if needed
                 main_lines = self._wrap_text(main_title, main_font, max_text_width)
@@ -200,7 +195,7 @@ class TitleImageView(ImageView):
                 )
 
                 # Create font
-                main_font = self.font_manager.get_font(main_font_size)
+                main_font = self._get_font(main_font_size)
 
                 # Wrap text if needed
                 main_lines = self._wrap_text(main_title, main_font, max_text_width)

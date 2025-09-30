@@ -116,6 +116,9 @@ python main.py push mydevice image --image-path "path/to/image.png"
 
 # 发送标题图片（动态生成）
 python main.py push mydevice title_image --main-title "主标题" --sub-title "副标题"
+
+# 发送代码状态监控
+python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz" --wakatime-api-key "your-key" --wakatime-user-id "username"
 ```
 
 ## 消息类型
@@ -143,7 +146,14 @@ python main.py push mydevice title_image --main-title "主标题" --sub-title "�
 - 其他图片相关参数同 image 类型
 
 ### 代码状态 (code_status)
-显示代码状态信息（开发中）。
+显示来自 Wakatime API 的编程时间统计信息，以图片形式展示今日编程时间、主要编程语言、项目和类别。支持以下参数：
+- `wakatime_url`: Wakatime 服务器 URL（必填）
+- `wakatime_api_key`: Wakatime API 密钥（必填）
+- `wakatime_user_id`: Wakatime 用户 ID（必填）
+- `link`: 可选的跳转链接
+- `border`: 可选的边框颜色
+- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
+- `dither_kernel`: 抖动算法
 
 ## 配置说明
 

@@ -12,6 +12,11 @@ class WorkParams(BaseModel):
 class WorkView(TitleImageView):
     """View handler for work countdown messages."""
 
+    def __init__(self, client, device_id: str):
+        super().__init__(client, device_id)
+        self.custom_font_name = "SourceHanSansSC-VF"  # Use SourceHanSans font
+        self.font_weight = 600  # SemiBold weight for better readability
+
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
         """Return the parameters class for this view."""

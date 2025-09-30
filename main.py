@@ -26,6 +26,11 @@ def setup_scheduler(config_path: str = "config.yaml"):
     for device in config.devices:
         if device.schedules:
             for schedule in device.schedules:
+                if schedule.cron is None:
+                    print(
+                        f"Skipping schedule for device '{device.name}' because cron is None"
+                    )
+                    continue
                 if schedule.type in ViewFactory.get_available_types():
                     # Add job using factory pattern
                     scheduler.add_job(
@@ -170,6 +175,15 @@ def main():
     )
     push_parser.add_argument("--main-title", help="Main title for title_image scenario")
     push_parser.add_argument("--sub-title", help="Sub title for title_image scenario")
+    push_parser.add_argument(
+        "--wakatime-url", help="Wakatime URL for code_status scenario"
+    )
+    push_parser.add_argument(
+        "--wakatime-api-key", help="Wakatime API key for code_status scenario"
+    )
+    push_parser.add_argument(
+        "--wakatime-user-id", help="Wakatime user ID for code_status scenario"
+    )
     push_parser.add_argument("--link", help="Optional link for image scenarios")
     push_parser.add_argument(
         "--border", type=int, help="Optional border color for image scenarios"
@@ -215,6 +229,12 @@ def main():
             push_params["main_title"] = args.main_title
         if args.sub_title:
             push_params["sub_title"] = args.sub_title
+        if args.wakatime_url:
+            push_params["wakatime_url"] = args.wakatime_url
+        if args.wakatime_api_key:
+            push_params["wakatime_api_key"] = args.wakatime_api_key
+        if args.wakatime_user_id:
+            push_params["wakatime_user_id"] = args.wakatime_user_id
         if args.link:
             push_params["link"] = args.link
         if args.border:

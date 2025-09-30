@@ -32,6 +32,7 @@ python main.py push mydevice text --message "Hello World" --title "通知"
 python main.py push mydevice work --clock-in "09:00" --clock-out "18:00"
 python main.py push mydevice image --image-path "path/to/image.png" --dither-type "DIFFUSION"
 python main.py push mydevice title_image --main-title "主标题" --sub-title "副标题" --border 1
+python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz" --wakatime-api-key "your-key" --wakatime-user-id "username"
 
 # Additional image options:
 # --link "https://example.com"
@@ -58,7 +59,7 @@ python main.py push mydevice title_image --main-title "主标题" --sub-title "�
 **View System** (`dotmate/view/`):
 - Factory pattern for message type handlers
 - BaseView abstract class defines the interface for all message types
-- Currently supports: work (countdown timer), text (custom messages), code_status, image (binary images), title_image (generated text images)
+- Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images)
 - Each view type has its own parameter model extending Pydantic BaseModel
 - Image views support dithering options and border colors for e-ink display optimization
 
@@ -69,11 +70,11 @@ python main.py push mydevice title_image --main-title "主标题" --sub-title "�
 - Image API supports advanced dithering algorithms and display options
 
 **Font Management System** (`dotmate/font/`):
-- FontManager class provides cross-platform font discovery and loading
-- Prioritizes Source Han Sans SC for Chinese text rendering
-- Automatic system font detection for macOS, Linux, and Windows
-- Font caching and fallback mechanisms
-- Variable font support with weight adjustment
+- FontManager class provides font file discovery and loading from `dotmate/font/resource/`
+- Supports TTF, OTF, and TTC font formats
+- Custom font selection per View with automatic fallback to default fonts
+- Built-in fonts: Hack-Bold (for code), SourceHanSansSC-VF (for Chinese text)
+- Variable font support with customizable weight settings in View classes
 
 ### Message Type Extension
 
@@ -86,7 +87,9 @@ To add new message types:
 For image-based message types:
 - Inherit from ImageView for basic image sending functionality
 - Inherit from TitleImageView for generated text-based images
-- Use FontManager for text rendering with proper Chinese font support
+- Set `custom_font_name` in `__init__()` to specify font (e.g., "Hack-Bold", "SourceHanSansSC-VF")
+- For variable fonts, set `font_weight` (100-900) to control font weight
+- Use `_get_font(size)` method to obtain fonts with custom settings
 
 ### Configuration Structure
 
@@ -108,6 +111,13 @@ devices:
           main_title: "午餐时间"
           sub_title: "记得按时吃饭"
           dither_type: "NONE"
+      - cron: "*/10 * * * *"
+        type: "code_status"
+        params:
+          wakatime_url: "https://waka.ameow.xyz"
+          wakatime_api_key: "your-api-key"
+          wakatime_user_id: "your-username"
+          dither_type: "NONE"
 ```
 
 ### Key Dependencies
@@ -116,8 +126,34 @@ devices:
 - PyYAML: Configuration file parsing
 - Requests: HTTP API communication
 - Pillow (PIL): Image processing and generation
-- Source Han Sans SC: Bundled Chinese font for text rendering
+- Custom fonts: Hack (programming font), SourceHanSansSC (Chinese font)
+
+## Font System Usage
+
+### Available Fonts
+- **Hack-Bold.ttf**: Bold programming font, ideal for code displays
+- **Hack-Regular.ttf**: Regular programming font
+- **SourceHanSansSC-VF.otf**: Variable Chinese font supporting weight adjustment
+
+### Font Configuration in Views
+
+For View classes requiring custom fonts:
+
+```python
+class MyCustomView(TitleImageView):
+    def __init__(self, client, device_id: str):
+        super().__init__(client, device_id)
+        self.custom_font_name = "Hack-Bold"  # Specify font
+        self.font_weight = 600  # For variable fonts (100-900)
+```
+
+### Current Font Assignments
+- **CodeStatusView**: Uses Hack-Bold for programming/technical content
+- **WorkView**: Uses SourceHanSansSC-VF with SemiBold weight (600) for Chinese text
+
+### Font Fallback
+If specified font is not found in `dotmate/font/resource/`, the system automatically falls back to PIL's default font.
 
 ## Development Notes
 
-The project uses a clean factory pattern for extensibility. The scheduler runs in blocking mode and handles shutdown signals gracefully. Configuration is loaded once at startup and validated using Pydantic models.
+The project uses a clean factory pattern for extensibility. The scheduler runs in blocking mode and handles shutdown signals gracefully. Configuration is loaded once at startup and validated using Pydantic models. Font management is handled at the View level, allowing each message type to use appropriate typography.

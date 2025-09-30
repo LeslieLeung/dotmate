@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 class Schedule(BaseModel):
-    cron: str
+    cron: Optional[str] = None
     type: str
     params: Optional[Dict[str, Any]] = None
 

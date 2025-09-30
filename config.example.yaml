@@ -13,6 +13,10 @@ devices:
       # 每5分钟检查代码状态
       - cron: "*/5 * * * *"
         type: code_status
+        params:
+          wakatime_url: "https://wakatime.com"
+          wakatime_api_key: "your-wakatime-api-key-here"
+          wakatime_user_id: "your-username"
 
       # 工作日每小时发送工作倒计时（朝九晚六）
       - cron: "0 9-18 * * 1-5"
@@ -60,6 +64,12 @@ devices:
       # 每2分钟检查代码状态
       - cron: "*/2 * * * *"
         type: code_status
+        params:
+          wakatime_url: "https://waka.ameow.xyz"
+          wakatime_api_key: "your-wakatime-api-key-here"
+          wakatime_user_id: "your-username"
+          dither_type: "NONE"
+          link: "https://waka.ameow.xyz"
 
       # 工作时间每30分钟提醒休息
       - cron: "*/30 9-17 * * 1-5"
@@ -90,7 +100,9 @@ devices:
 #   - type: 消息类型，支持以下类型：
 #     * text: 文本消息
 #     * work: 工作倒计时
-#     * code_status: 代码状态（开发中）
+#     * code_status: 代码状态监控
+#     * image: 图像显示
+#     * title_image: 生成标题图像
 #
 #   - params: 消息参数（可选），根据消息类型不同而不同：
 #
@@ -103,4 +115,25 @@ devices:
 #       - clock_out: 下班时间，格式 "HH:MM"（可选，默认 "18:00"）
 #
 #     code_status 类型参数：
-#       - 暂无可配置参数（开发中）
+#       - wakatime_url: Wakatime 服务器 URL（必填）
+#       - wakatime_api_key: Wakatime API 密钥（必填）
+#       - wakatime_user_id: Wakatime 用户 ID（必填）
+#       - link: 点击链接（可选）
+#       - border: 边框颜色（可选，数字）
+#       - dither_type: 抖动类型（可选，DIFFUSION/ORDERED/NONE）
+#       - dither_kernel: 抖动内核（可选）
+#
+#     image 类型参数：
+#       - image_data: 图像二进制数据（必填）
+#       - link: 点击链接（可选）
+#       - border: 边框颜色（可选）
+#       - dither_type: 抖动类型（可选）
+#       - dither_kernel: 抖动内核（可选）
+#
+#     title_image 类型参数：
+#       - main_title: 主标题（必填）
+#       - sub_title: 副标题（可选）
+#       - link: 点击链接（可选）
+#       - border: 边框颜色（可选）
+#       - dither_type: 抖动类型（可选）
+#       - dither_kernel: 抖动内核（可选）

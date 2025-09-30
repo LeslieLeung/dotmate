@@ -12,9 +12,17 @@ dotmate/
     │   └── api.py          # API 客户端
     ├── config/
     │   └── models.py       # 配置模型
+    ├── font/
+    │   ├── manager.py      # 字体管理器
+    │   └── resource/       # 字体文件目录
+    │       ├── Hack-Bold.ttf
+    │       ├── Hack-Regular.ttf
+    │       └── SourceHanSansSC-VF.otf
     └── view/
         ├── base.py         # 基础视图类
         ├── factory.py      # 视图工厂
+        ├── image.py        # 图像视图基类
+        ├── title_image.py  # 标题图像视图
         ├── work.py         # 工作倒计时视图
         ├── text.py         # 文本消息视图
         └── code_status.py  # 代码状态视图
@@ -38,33 +46,122 @@ uv install
 
 ## 扩展开发
 
-### 添加新的消息类型
+### 新 View 开发 SOP (标准操作程序)
 
-1. 在 `dotmate/view/` 目录下创建新的视图文件
-2. 继承 `BaseView` 类并实现必要方法
-3. 在 `factory.py` 中注册新的视图类型
+#### 步骤 1: 确定 View 类型
 
-示例：
+首先确定你要开发的 View 类型：
+
+1. **文本类型 (BaseView)**: 发送简单的文本消息
+2. **图像类型 (ImageView)**: 发送图像数据
+3. **生成图像类型 (TitleImageView)**: 动态生成图像内容
+
+#### 步骤 2: 创建参数模型
+
+在 `dotmate/view/` 目录下创建新的视图文件，首先定义参数模型：
+
 ```python
-# dotmate/view/my_custom.py
-from typing import Type
 from pydantic import BaseModel
-from dotmate.view.base import BaseView
+from typing import Optional, Literal
 
 class MyCustomParams(BaseModel):
-    custom_param: str
+    # 必填参数
+    required_param: str
 
-class MyCustomView(BaseView):
+    # 可选参数
+    optional_param: Optional[str] = None
+
+    # 如果是图像类型，添加图像相关参数
+    link: Optional[str] = None
+    border: Optional[int] = None
+    dither_type: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = "NONE"
+    dither_kernel: Optional[Literal[
+        "THRESHOLD", "ATKINSON", "BURKES", "FLOYD_STEINBERG",
+        "SIERRA2", "STUCKI", "JARVIS_JUDICE_NINKE",
+        "DIFFUSION_ROW", "DIFFUSION_COLUMN", "DIFFUSION2_D"
+    ]] = None
+```
+
+#### 步骤 3: 选择基类并实现 View
+
+根据 View 类型选择适当的基类：
+
+**文本类型示例：**
+```python
+from dotmate.view.base import BaseView
+from dotmate.api.api import DisplayTextRequest
+
+class MyTextView(BaseView):
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
         return MyCustomParams
 
     def execute(self, params: BaseModel) -> None:
-        # 实现你的逻辑
-        pass
+        custom_params = MyCustomParams(**params.model_dump())
+
+        request = DisplayTextRequest(
+            refreshNow=True,
+            deviceId=self.device_id,
+            title="My Title",
+            message=custom_params.required_param,
+            signature=datetime.now().strftime("%H:%M"),
+            icon=None,
+            link=None,
+        )
+
+        try:
+            response = self.client.display_text(request)
+            print(f"Message sent to {self.device_id}")
+        except Exception as e:
+            print(f"Error: {e}")
 ```
 
-然后在 `factory.py` 中注册：
+**图像类型示例：**
+```python
+from dotmate.view.image import ImageView, ImageParams
+
+class MyImageView(ImageView):
+    def __init__(self, client, device_id: str):
+        super().__init__(client, device_id)
+        # 如果需要字体管理，添加：
+        # self.font_manager = FontManager()
+
+    @classmethod
+    def get_params_class(cls) -> Type[BaseModel]:
+        return MyCustomParams
+
+    def _generate_image(self, params: MyCustomParams) -> bytes:
+        """生成图像的核心逻辑"""
+        # 实现图像生成逻辑
+        # 返回 PNG 格式的字节数据
+        pass
+
+    def execute(self, params: BaseModel) -> None:
+        custom_params = MyCustomParams(**params.model_dump())
+
+        try:
+            # 生成图像
+            image_data = self._generate_image(custom_params)
+
+            # 创建 ImageParams 并调用父类方法
+            image_params = ImageParams(
+                image_data=image_data,
+                link=custom_params.link,
+                border=custom_params.border,
+                dither_type=custom_params.dither_type,
+                dither_kernel=custom_params.dither_kernel,
+            )
+
+            super().execute(image_params)
+
+        except Exception as e:
+            print(f"Error in MyImageView: {e}")
+```
+
+#### 步骤 4: 注册到工厂
+
+在 `dotmate/view/factory.py` 中注册新的视图类型：
+
 ```python
 from dotmate.view.my_custom import MyCustomView
 
@@ -73,9 +170,152 @@ class ViewFactory:
         "work": WorkView,
         "text": TextView,
         "code_status": CodeStatusView,
+        "image": ImageView,
+        "title_image": TitleImageView,
         "my_custom": MyCustomView,  # 添加新类型
     }
 ```
+
+#### 步骤 5: 添加命令行支持
+
+在 `main.py` 中添加命令行参数支持：
+
+1. **添加参数解析**：
+```python
+# 在 push_parser.add_argument 部分添加
+push_parser.add_argument("--my-param", help="My custom parameter")
+```
+
+2. **添加参数处理**：
+```python
+# 在参数处理部分添加
+if args.my_param:
+    push_params["my_param"] = args.my_param
+```
+
+#### 步骤 6: 更新配置文件和文档
+
+1. **更新 `config.example.yaml`**：
+   - 添加新 View 类型的配置示例
+   - 更新参数说明文档
+
+2. **更新 `README.md`**：
+   - 在消息类型部分添加说明
+   - 添加命令行使用示例
+
+3. **更新 `CLAUDE.md`**：
+   - 更新支持的 View 类型列表
+   - 添加配置示例
+
+#### 步骤 7: 测试
+
+1. **参数验证测试**：
+```bash
+python -c "
+from dotmate.view.my_custom import MyCustomView, MyCustomParams
+params = MyCustomParams(required_param='test')
+print('✓ Parameter validation passed')
+"
+```
+
+2. **工厂注册测试**：
+```bash
+python -c "
+from dotmate.view.factory import ViewFactory
+print('Available types:', ViewFactory.get_available_types())
+"
+```
+
+3. **命令行测试**：
+```bash
+python main.py push mydevice my_custom --my-param "test value"
+```
+
+#### 最佳实践
+
+1. **错误处理**: 总是包含适当的错误处理和用户友好的错误消息
+2. **参数验证**: 使用 Pydantic 模型进行参数验证
+3. **代码复用**: 对于图像类型，尽量复用现有的字体管理和图像生成工具
+4. **文档**: 确保添加清晰的文档字符串和类型提示
+5. **测试**: 在不同场景下测试你的 View（成功、失败、边界情况）
+
+#### 图像 View 开发注意事项
+
+- 图像尺寸固定为 296x152 像素
+- 使用 1-bit 模式 (黑白) 以适配 e-ink 显示器
+- 支持中文字体渲染时使用 FontManager
+- 实现适当的文本换行和字体大小调整
+- 包含时间戳等有用信息
+
+### 字体系统
+
+#### 字体管理器 (FontManager)
+
+FontManager 负责字体文件的查找和加载，支持：
+
+- **字体文件目录**: `dotmate/font/resource/`
+- **支持格式**: TTF、OTF、TTC
+- **系统字体回退**: 在本地字体不可用时自动回退到系统字体
+
+#### 在 View 中使用自定义字体
+
+图像类型的 View 可以通过以下方式自定义字体：
+
+```python
+from dotmate.view.image import ImageView
+from dotmate.font import FontManager
+
+class MyImageView(ImageView):
+    def __init__(self, client, device_id: str):
+        super().__init__(client, device_id)
+        self.font_manager = FontManager()
+        self.custom_font_name = "Hack-Bold"  # 指定字体名称
+
+    def _get_font(self, size: int):
+        """获取指定大小的字体"""
+        if self.custom_font_name:
+            return self.font_manager.get_specific_font(self.custom_font_name, size)
+        return self.font_manager.get_font(size)
+```
+
+#### 对于 TitleImageView 的字体配置
+
+TitleImageView 支持更高级的字体配置，包括字重设置：
+
+```python
+from dotmate.view.title_image import TitleImageView
+
+class MyTitleView(TitleImageView):
+    def __init__(self, client, device_id: str):
+        super().__init__(client, device_id)
+        self.custom_font_name = "SourceHanSansSC-VF"  # 可变字体
+        self.font_weight = 600  # 字重 (100-900)
+```
+
+#### 内置字体配置
+
+项目包含以下字体：
+
+- **Hack-Bold.ttf**: 编程字体，适合代码展示
+- **Hack-Regular.ttf**: 编程字体常规版本
+- **SourceHanSansSC-VF.otf**: 思源黑体可变字体，支持中文
+
+#### 字体选择建议
+
+- **英文/代码内容**: 使用 Hack 字体系列
+- **中文内容**: 使用 SourceHanSansSC 字体
+- **可变字体**: 可通过 `font_weight` 调整字重 (100-900)
+
+#### 字体回退机制
+
+如果指定的字体不存在，系统会：
+1. 尝试在 `font/resource/` 目录中查找
+2. 尝试部分匹配字体文件名
+3. 直接回退到 PIL 默认字体
+
+### 添加新的消息类型
+
+按照上述 SOP 步骤进行开发即可。
 
 ### 配置模型
 
