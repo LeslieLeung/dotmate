@@ -79,8 +79,11 @@ docker rm dotmate
 git clone https://github.com/leslieleung/dotmate
 cd dotmate
 
+## 安装环境
+uv venv
+
 # 安装依赖
-uv install
+uv sync
 ```
 
 #### 配置
