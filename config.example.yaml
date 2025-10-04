@@ -71,6 +71,16 @@ devices:
           dither_type: "NONE"
           link: "https://waka.ameow.xyz"
 
+      # 每30分钟更新网站统计数据
+      - cron: "*/30 * * * *"
+        type: umami_stats
+        params:
+          umami_host: "https://umami.ameow.xyz"
+          umami_website_id: "your-website-id-here"
+          umami_api_key: "your-umami-api-key-here"
+          umami_time_range: "24h"
+          dither_type: "NONE"
+
       # 工作时间每30分钟提醒休息
       - cron: "*/30 9-17 * * 1-5"
         type: text
@@ -103,6 +113,7 @@ devices:
 #     * code_status: 代码状态监控
 #     * image: 图像显示
 #     * title_image: 生成标题图像
+#     * umami_stats: Umami 网站统计数据
 #
 #   - params: 消息参数（可选），根据消息类型不同而不同：
 #
@@ -133,6 +144,16 @@ devices:
 #     title_image 类型参数：
 #       - main_title: 主标题（必填）
 #       - sub_title: 副标题（可选）
+#       - link: 点击链接（可选）
+#       - border: 边框颜色（可选）
+#       - dither_type: 抖动类型（可选）
+#       - dither_kernel: 抖动内核（可选）
+#
+#     umami_stats 类型参数：
+#       - umami_host: Umami 服务器 URL（必填）
+#       - umami_website_id: 网站 ID（必填）
+#       - umami_api_key: Umami API 密钥（必填）
+#       - umami_time_range: 时间范围（可选，默认 "24h"，支持 7d、24h、30d 等）
 #       - link: 点击链接（可选）
 #       - border: 边框颜色（可选）
 #       - dither_type: 抖动类型（可选）

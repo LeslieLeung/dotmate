@@ -33,6 +33,7 @@ python main.py push mydevice work --clock-in "09:00" --clock-out "18:00"
 python main.py push mydevice image --image-path "path/to/image.png" --dither-type "DIFFUSION"
 python main.py push mydevice title_image --main-title "主标题" --sub-title "副标题" --border 1
 python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz" --wakatime-api-key "your-key" --wakatime-user-id "username"
+python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" --umami-website-id "website-id" --umami-api-key "api-key" --umami-time-range "7d"
 
 # Additional image options:
 # --link "https://example.com"
@@ -59,7 +60,7 @@ python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz"
 **View System** (`dotmate/view/`):
 - Factory pattern for message type handlers
 - BaseView abstract class defines the interface for all message types
-- Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images)
+- Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images), umami_stats (Umami analytics)
 - Each view type has its own parameter model extending Pydantic BaseModel
 - Image views support dithering options and border colors for e-ink display optimization
 
@@ -118,6 +119,14 @@ devices:
           wakatime_api_key: "your-api-key"
           wakatime_user_id: "your-username"
           dither_type: "NONE"
+      - cron: "*/30 * * * *"
+        type: "umami_stats"
+        params:
+          umami_host: "https://umami.ameow.xyz"
+          umami_website_id: "your-website-id"
+          umami_api_key: "your-api-key"
+          umami_time_range: "24h"
+          dither_type: "NONE"
 ```
 
 ### Key Dependencies
@@ -150,6 +159,7 @@ class MyCustomView(TitleImageView):
 ### Current Font Assignments
 - **CodeStatusView**: Uses Hack-Bold for programming/technical content
 - **WorkView**: Uses SourceHanSansSC-VF with SemiBold weight (600) for Chinese text
+- **UmamiStatsView**: Uses Hack-Bold for analytics data display
 
 ### Font Fallback
 If specified font is not found in `dotmate/font/resource/`, the system automatically falls back to PIL's default font.

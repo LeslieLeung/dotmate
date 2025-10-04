@@ -164,7 +164,7 @@ def main():
     push_parser.add_argument("device", help="Device name or device ID")
     push_parser.add_argument(
         "scenario",
-        help="Scenario type (e.g., work, text, code_status, image, title_image)",
+        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats)",
     )
     push_parser.add_argument("--message", help="Message for text scenario")
     push_parser.add_argument("--title", help="Title for text scenario")
@@ -183,6 +183,18 @@ def main():
     )
     push_parser.add_argument(
         "--wakatime-user-id", help="Wakatime user ID for code_status scenario"
+    )
+    push_parser.add_argument(
+        "--umami-host", help="Umami host URL for umami_stats scenario"
+    )
+    push_parser.add_argument(
+        "--umami-website-id", help="Umami website ID for umami_stats scenario"
+    )
+    push_parser.add_argument(
+        "--umami-api-key", help="Umami API key for umami_stats scenario"
+    )
+    push_parser.add_argument(
+        "--umami-time-range", help="Time range for umami_stats scenario (e.g., 7d, 24h)"
     )
     push_parser.add_argument("--link", help="Optional link for image scenarios")
     push_parser.add_argument(
@@ -235,6 +247,14 @@ def main():
             push_params["wakatime_api_key"] = args.wakatime_api_key
         if args.wakatime_user_id:
             push_params["wakatime_user_id"] = args.wakatime_user_id
+        if args.umami_host:
+            push_params["umami_host"] = args.umami_host
+        if args.umami_website_id:
+            push_params["umami_website_id"] = args.umami_website_id
+        if args.umami_api_key:
+            push_params["umami_api_key"] = args.umami_api_key
+        if args.umami_time_range:
+            push_params["umami_time_range"] = args.umami_time_range
         if args.link:
             push_params["link"] = args.link
         if args.border:

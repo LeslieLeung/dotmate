@@ -25,7 +25,8 @@ dotmate/
         ├── title_image.py  # 标题图像视图
         ├── work.py         # 工作倒计时视图
         ├── text.py         # 文本消息视图
-        └── code_status.py  # 代码状态视图
+        ├── code_status.py  # 代码状态视图
+        └── umami_stats.py  # Umami 统计视图
 ```
 
 ## 开发环境搭建
@@ -305,6 +306,12 @@ class MyTitleView(TitleImageView):
 - **英文/代码内容**: 使用 Hack 字体系列
 - **中文内容**: 使用 SourceHanSansSC 字体
 - **可变字体**: 可通过 `font_weight` 调整字重 (100-900)
+
+#### 当前字体分配
+
+- **CodeStatusView**: 使用 Hack-Bold 用于代码/技术内容展示
+- **WorkView**: 使用 SourceHanSansSC-VF (SemiBold weight 600) 用于中文文本
+- **UmamiStatsView**: 使用 Hack-Bold 用于分析数据展示
 
 #### 字体回退机制
 
