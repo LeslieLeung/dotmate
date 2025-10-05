@@ -167,3 +167,5 @@ If specified font is not found in `dotmate/font/resource/`, the system automatic
 ## Development Notes
 
 The project uses a clean factory pattern for extensibility. The scheduler runs in blocking mode and handles shutdown signals gracefully. Configuration is loaded once at startup and validated using Pydantic models. Font management is handled at the View level, allowing each message type to use appropriate typography.
+
+Please refer to DEVELOPMENT.md for more details.

@@ -5,7 +5,7 @@ Dotmate 是一个用于管理[Quote/0](https://dot.mindreset.tech/product/quote)
 ## 功能特性
 
 - 🕐 **定时任务调度**：基于 Cron 表达式的定时任务系统
-- 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态、图片消息和标题图片生成等多种消息类型
+- 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态、图片消息、标题图片生成和 Umami 统计等多种消息类型
 - 🎯 **多设备管理**：支持管理多个设备，每个设备可配置独立的任务调度
 - 🔧 **灵活配置**：使用 YAML 配置文件管理设备和任务
 - 🚀 **即时推送**：支持手动触发消息推送
@@ -122,6 +122,9 @@ python main.py push mydevice title_image --main-title "主标题" --sub-title "�
 
 # 发送代码状态监控
 python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz" --wakatime-api-key "your-key" --wakatime-user-id "username"
+
+# 发送 Umami 统计数据
+python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" --umami-website-id "website-id" --umami-api-key "api-key" --umami-time-range "7d"
 ```
 
 ## 消息类型
@@ -153,6 +156,17 @@ python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz"
 - `wakatime_url`: Wakatime 服务器 URL（必填）
 - `wakatime_api_key`: Wakatime API 密钥（必填）
 - `wakatime_user_id`: Wakatime 用户 ID（必填）
+- `link`: 可选的跳转链接
+- `border`: 可选的边框颜色
+- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
+- `dither_kernel`: 抖动算法
+
+### Umami 统计 (umami_stats)
+显示来自 Umami Analytics 的网站访问统计信息，以图片形式展示页面浏览量、访客数、跳出率和平均访问时长。支持以下参数：
+- `umami_host`: Umami 服务器地址（必填）
+- `umami_website_id`: Umami 网站 ID（必填）
+- `umami_api_key`: Umami API 密钥（必填）
+- `umami_time_range`: 统计时间范围，可选值：`24h`（24小时）、`7d`（7天）、`30d`（30天）、`90d`（90天），默认为 `24h`
 - `link`: 可选的跳转链接
 - `border`: 可选的边框颜色
 - `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
