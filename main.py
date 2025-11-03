@@ -1,4 +1,5 @@
 import argparse
+import logging
 import signal
 import sys
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -6,6 +7,13 @@ from apscheduler.triggers.cron import CronTrigger
 from dotmate.config import load_config
 from dotmate.api.api import DotClient
 from dotmate.view.factory import ViewFactory
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def setup_scheduler(config_path: str = "config.yaml"):
@@ -164,7 +172,7 @@ def main():
     push_parser.add_argument("device", help="Device name or device ID")
     push_parser.add_argument(
         "scenario",
-        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats)",
+        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions)",
     )
     push_parser.add_argument("--message", help="Message for text scenario")
     push_parser.add_argument("--title", help="Title for text scenario")
@@ -195,6 +203,13 @@ def main():
     )
     push_parser.add_argument(
         "--umami-time-range", help="Time range for umami_stats scenario (e.g., 7d, 24h)"
+    )
+    push_parser.add_argument(
+        "--github-username", help="GitHub username for github_contributions scenario"
+    )
+    push_parser.add_argument(
+        "--github-token",
+        help="GitHub Personal Access Token for github_contributions scenario",
     )
     push_parser.add_argument("--link", help="Optional link for image scenarios")
     push_parser.add_argument(
@@ -255,6 +270,10 @@ def main():
             push_params["umami_api_key"] = args.umami_api_key
         if args.umami_time_range:
             push_params["umami_time_range"] = args.umami_time_range
+        if args.github_username:
+            push_params["github_username"] = args.github_username
+        if args.github_token:
+            push_params["github_token"] = args.github_token
         if args.link:
             push_params["link"] = args.link
         if args.border:

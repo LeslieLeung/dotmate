@@ -125,6 +125,9 @@ python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz"
 
 # 发送 Umami 统计数据
 python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" --umami-website-id "website-id" --umami-api-key "api-key" --umami-time-range "7d"
+
+# 发送 GitHub 贡献图
+python main.py push mydevice github_contributions --github-username "username" --github-token "ghp_xxxxx"
 ```
 
 ## 消息类型
@@ -167,6 +170,15 @@ python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" 
 - `umami_website_id`: Umami 网站 ID（必填）
 - `umami_api_key`: Umami API 密钥（必填）
 - `umami_time_range`: 统计时间范围，可选值：`24h`（24小时）、`7d`（7天）、`30d`（30天）、`90d`（90天），默认为 `24h`
+- `link`: 可选的跳转链接
+- `border`: 可选的边框颜色
+- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
+- `dither_kernel`: 抖动算法
+
+### GitHub 贡献图 (github_contributions)
+显示 GitHub 用户的贡献热力图，包括用户信息、followers、总 stars 和最近一个月的贡献网格图。支持以下参数：
+- `github_username`: GitHub 用户名（必填）
+- `github_token`: GitHub Personal Access Token（必填）
 - `link`: 可选的跳转链接
 - `border`: 可选的边框颜色
 - `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）

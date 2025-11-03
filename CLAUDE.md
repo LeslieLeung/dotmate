@@ -34,6 +34,7 @@ python main.py push mydevice image --image-path "path/to/image.png" --dither-typ
 python main.py push mydevice title_image --main-title "主标题" --sub-title "副标题" --border 1
 python main.py push mydevice code_status --wakatime-url "https://waka.ameow.xyz" --wakatime-api-key "your-key" --wakatime-user-id "username"
 python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" --umami-website-id "website-id" --umami-api-key "api-key" --umami-time-range "7d"
+python main.py push mydevice github_contributions --github-username "username" --github-token "ghp_xxxxx" --dither-type "NONE"
 
 # Additional image options:
 # --link "https://example.com"
@@ -60,7 +61,7 @@ python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" 
 **View System** (`dotmate/view/`):
 - Factory pattern for message type handlers
 - BaseView abstract class defines the interface for all message types
-- Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images), umami_stats (Umami analytics)
+- Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images), umami_stats (Umami analytics), github_contributions (GitHub contribution heatmap)
 - Each view type has its own parameter model extending Pydantic BaseModel
 - Image views support dithering options and border colors for e-ink display optimization
 
@@ -126,6 +127,12 @@ devices:
           umami_website_id: "your-website-id"
           umami_api_key: "your-api-key"
           umami_time_range: "24h"
+          dither_type: "NONE"
+      - cron: "0 9 * * *"
+        type: "github_contributions"
+        params:
+          github_username: "your-username"
+          github_token: "ghp_xxxxx"
           dither_type: "NONE"
 ```
 
