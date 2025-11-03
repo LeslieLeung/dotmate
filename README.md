@@ -10,6 +10,23 @@ Dotmate 是一个用于管理[Quote/0](https://dot.mindreset.tech/product/quote)
 - 🔧 **灵活配置**：使用 YAML 配置文件管理设备和任务
 - 🚀 **即时推送**：支持手动触发消息推送
 
+## 效果展示
+
+### 标题图片
+<img src="demos/title_image.png" width="400" alt="标题图片效果">
+
+### 工作倒计时
+<img src="demos/work_clock_out.png" width="400" alt="工作倒计时效果">
+
+### 代码状态监控
+<img src="demos/code_status.png" width="400" alt="代码状态监控效果">
+
+### Umami 统计
+<img src="demos/umami_stats.png" width="400" alt="Umami统计效果">
+
+### GitHub 贡献图
+<img src="demos/github_contributions.png" width="400" alt="GitHub贡献图效果">
+
 ## 快速开始
 
 ### 方式一：Docker Compose（推荐）
@@ -130,6 +147,23 @@ python main.py push mydevice umami_stats --umami-host "https://umami.ameow.xyz" 
 python main.py push mydevice github_contributions --github-username "username" --github-token "ghp_xxxxx"
 ```
 
+##### 生成 Demo 图片（不发送到设备）
+demo 命令可以生成 PNG 图片并保存到本地，用于测试和预览效果，而不实际发送到设备。
+
+```bash
+# 生成标题图片
+python main.py demo title_image --main-title "测试标题" --sub-title "副标题"
+
+# 生成工作倒计时图片
+python main.py demo work --clock-in "09:00" --clock-out "18:00"
+
+# 指定输出目录
+python main.py demo title_image --main-title "测试" --output "./my-demos"
+
+# demo 命令支持所有与 push 命令相同的参数（除了设备名称）
+# 生成的图片默认保存在 demos/ 目录下
+```
+
 ## 消息类型
 
 ### 文本消息 (text)
@@ -138,13 +172,28 @@ python main.py push mydevice github_contributions --github-username "username" -
 ### 工作倒计时 (work)
 显示距离下班还有多长时间，支持自定义上班和下班时间。现在以图片形式显示，支持中文字体渲染。
 
+<img src="demos/work_clock_out.png" width="300" alt="工作倒计时效果">
+
 ### 图片消息 (image)
 发送 PNG 格式的图片文件到设备。支持以下参数：
 - `image_path`: 图片文件路径
 - `link`: 可选的跳转链接
-- `border`: 可选的边框颜色
-- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
-- `dither_kernel`: 抖动算法（多种选项）
+- `border`: 可选的边框颜色（0-255 的整数值）
+- `dither_type`: 抖动类型，可选值：
+  - `DIFFUSION`: 扩散抖动（默认）
+  - `ORDERED`: 有序抖动
+  - `NONE`: 不使用抖动
+- `dither_kernel`: 抖动算法，可选值：
+  - `FLOYD_STEINBERG`: Floyd-Steinberg 算法（经典扩散抖动）
+  - `ATKINSON`: Atkinson 算法
+  - `BURKES`: Burkes 算法
+  - `SIERRA2`: Sierra-2 算法
+  - `STUCKI`: Stucki 算法
+  - `JARVIS_JUDICE_NINKE`: Jarvis-Judice-Ninke 算法
+  - `THRESHOLD`: 阈值算法
+  - `DIFFUSION_ROW`: 行扩散
+  - `DIFFUSION_COLUMN`: 列扩散
+  - `DIFFUSION2_D`: 二维扩散
 
 ### 标题图片 (title_image)
 动态生成包含标题的图片消息。支持以下参数：
@@ -154,15 +203,16 @@ python main.py push mydevice github_contributions --github-username "username" -
 - 支持文本自动换行
 - 其他图片相关参数同 image 类型
 
+<img src="demos/title_image.png" width="300" alt="标题图片效果">
+
 ### 代码状态 (code_status)
 显示来自 Wakatime API 的编程时间统计信息，以图片形式展示今日编程时间、主要编程语言、项目和类别。支持以下参数：
 - `wakatime_url`: Wakatime 服务器 URL（必填）
 - `wakatime_api_key`: Wakatime API 密钥（必填）
 - `wakatime_user_id`: Wakatime 用户 ID（必填）
-- `link`: 可选的跳转链接
-- `border`: 可选的边框颜色
-- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
-- `dither_kernel`: 抖动算法
+- 其他图片相关参数同 image 类型
+
+<img src="demos/code_status.png" width="300" alt="代码状态效果">
 
 ### Umami 统计 (umami_stats)
 显示来自 Umami Analytics 的网站访问统计信息，以图片形式展示页面浏览量、访客数、跳出率和平均访问时长。支持以下参数：
@@ -170,19 +220,17 @@ python main.py push mydevice github_contributions --github-username "username" -
 - `umami_website_id`: Umami 网站 ID（必填）
 - `umami_api_key`: Umami API 密钥（必填）
 - `umami_time_range`: 统计时间范围，可选值：`24h`（24小时）、`7d`（7天）、`30d`（30天）、`90d`（90天），默认为 `24h`
-- `link`: 可选的跳转链接
-- `border`: 可选的边框颜色
-- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
-- `dither_kernel`: 抖动算法
+- 其他图片相关参数同 image 类型
+
+<img src="demos/umami_stats.png" width="300" alt="Umami统计效果">
 
 ### GitHub 贡献图 (github_contributions)
 显示 GitHub 用户的贡献热力图，包括用户信息、followers、总 stars 和最近一个月的贡献网格图。支持以下参数：
 - `github_username`: GitHub 用户名（必填）
 - `github_token`: GitHub Personal Access Token（必填）
-- `link`: 可选的跳转链接
-- `border`: 可选的边框颜色
-- `dither_type`: 抖动类型（DIFFUSION, ORDERED, NONE）
-- `dither_kernel`: 抖动算法
+- 其他图片相关参数同 image 类型
+
+<img src="demos/github_contributions.png" width="300" alt="GitHub贡献图效果">
 
 ## 配置说明
 

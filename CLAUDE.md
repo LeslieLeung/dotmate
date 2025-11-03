@@ -41,6 +41,17 @@ python main.py push mydevice github_contributions --github-username "username" -
 # --border <color_number>
 # --dither-type "DIFFUSION|ORDERED|NONE"
 # --dither-kernel "FLOYD_STEINBERG|ATKINSON|BURKES|..." (many options available)
+
+# Generate demo PNG images without sending to device
+python main.py demo <message_type> [options]
+
+# Demo examples:
+python main.py demo title_image --main-title "测试标题" --sub-title "副标题"
+python main.py demo work --clock-in "09:00" --clock-out "18:00"
+python main.py demo title_image --main-title "测试" --output "./my-demos"
+
+# The demo command supports all the same parameters as push (except device name)
+# Generated images are saved to demos/ directory by default
 ```
 
 ### Environment Requirements
@@ -65,11 +76,13 @@ python main.py push mydevice github_contributions --github-username "username" -
 - Each view type has its own parameter model extending Pydantic BaseModel
 - Image views support dithering options and border colors for e-ink display optimization
 
-**API Client** (`dotmate/api/api.py`):
-- DotClient handles communication with the Quote/0 API
+**API Client** (`dotmate/api/`):
+- `api.py`: DotClient handles communication with the Quote/0 API
+- `demo.py`: DemoClient provides a mock client for generating demo images without API calls
 - All views use the same client instance for device communication
 - Supports both text display and image display endpoints
 - Image API supports advanced dithering algorithms and display options
+- DemoClient saves generated images to local filesystem for testing and preview
 
 **Font Management System** (`dotmate/font/`):
 - FontManager class provides font file discovery and loading from `dotmate/font/resource/`

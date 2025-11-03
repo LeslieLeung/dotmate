@@ -6,6 +6,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotmate.config import load_config
 from dotmate.api.api import DotClient
+from dotmate.api.demo import DemoClient
 from dotmate.view.factory import ViewFactory
 
 # Configure logging
@@ -59,6 +60,57 @@ def signal_handler(signum, frame):
     """Handle shutdown signals."""
     print("\nShutdown signal received. Stopping dotmate...")
     sys.exit(0)
+
+
+def generate_demo(scenario: str, config_path: str = "config.yaml", output_dir: str = "demos", **params):
+    """Generate demo PNG image for a specific scenario without sending to device."""
+    try:
+        config = load_config(config_path)
+    except FileNotFoundError:
+        print(f"Config file not found: {config_path}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        sys.exit(1)
+
+    # Create demo client that saves images to files
+    client = DemoClient(output_dir)
+
+    # Use a dummy device ID for demo
+    dummy_device_id = "demo-device"
+
+    # Execute the scenario using factory pattern
+    try:
+        if scenario in ViewFactory.get_available_types():
+            # Use provided params
+            scenario_params = params if params else {}
+
+            # Special handling for image scenario - convert file path to binary data
+            if scenario == "image" and "image_path" in scenario_params:
+                image_path = scenario_params.pop("image_path")
+                try:
+                    with open(image_path, "rb") as f:
+                        scenario_params["image_data"] = f.read()
+                    print(f"Loaded image from: {image_path}")
+                except FileNotFoundError:
+                    print(f"Error: Image file not found: {image_path}")
+                    sys.exit(1)
+                except Exception as e:
+                    print(f"Error reading image file {image_path}: {e}")
+                    sys.exit(1)
+
+            print(f"Generating demo for scenario: {scenario}")
+            ViewFactory.execute_view(scenario, client, dummy_device_id, scenario_params)
+        else:
+            print(f"Unknown or unsupported scenario: {scenario}")
+            available_types = ViewFactory.get_available_types()
+            print(f"Available scenarios: {available_types}")
+            sys.exit(1)
+    except Exception as e:
+        print(f"Error generating demo for scenario '{scenario}': {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 def force_push(device_name_or_id: str, scenario: str, config_path: str = "config.yaml", **params):
@@ -237,6 +289,76 @@ def main():
         help="Dither kernel for image scenarios",
     )
 
+    # Demo command - generate PNG without sending to device
+    demo_parser = subparsers.add_parser("demo", help="Generate demo PNG image without sending to device")
+    demo_parser.add_argument(
+        "scenario",
+        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions)",
+    )
+    demo_parser.add_argument("--output", "-o", default="demos", help="Output directory for demo images (default: demos)")
+    demo_parser.add_argument("--message", help="Message for text scenario")
+    demo_parser.add_argument("--title", help="Title for text scenario")
+    demo_parser.add_argument("--clock-in", help="Clock in time for work scenario")
+    demo_parser.add_argument("--clock-out", help="Clock out time for work scenario")
+    demo_parser.add_argument(
+        "--image-path", help="Path to PNG image file for image scenario"
+    )
+    demo_parser.add_argument("--main-title", help="Main title for title_image scenario")
+    demo_parser.add_argument("--sub-title", help="Sub title for title_image scenario")
+    demo_parser.add_argument(
+        "--wakatime-url", help="Wakatime URL for code_status scenario"
+    )
+    demo_parser.add_argument(
+        "--wakatime-api-key", help="Wakatime API key for code_status scenario"
+    )
+    demo_parser.add_argument(
+        "--wakatime-user-id", help="Wakatime user ID for code_status scenario"
+    )
+    demo_parser.add_argument(
+        "--umami-host", help="Umami host URL for umami_stats scenario"
+    )
+    demo_parser.add_argument(
+        "--umami-website-id", help="Umami website ID for umami_stats scenario"
+    )
+    demo_parser.add_argument(
+        "--umami-api-key", help="Umami API key for umami_stats scenario"
+    )
+    demo_parser.add_argument(
+        "--umami-time-range", help="Time range for umami_stats scenario (e.g., 7d, 24h)"
+    )
+    demo_parser.add_argument(
+        "--github-username", help="GitHub username for github_contributions scenario"
+    )
+    demo_parser.add_argument(
+        "--github-token",
+        help="GitHub Personal Access Token for github_contributions scenario",
+    )
+    demo_parser.add_argument("--link", help="Optional link for image scenarios")
+    demo_parser.add_argument(
+        "--border", type=int, help="Optional border color for image scenarios"
+    )
+    demo_parser.add_argument(
+        "--dither-type",
+        choices=["DIFFUSION", "ORDERED", "NONE"],
+        help="Dither type for image scenarios",
+    )
+    demo_parser.add_argument(
+        "--dither-kernel",
+        choices=[
+            "THRESHOLD",
+            "ATKINSON",
+            "BURKES",
+            "FLOYD_STEINBERG",
+            "SIERRA2",
+            "STUCKI",
+            "JARVIS_JUDICE_NINKE",
+            "DIFFUSION_ROW",
+            "DIFFUSION_COLUMN",
+            "DIFFUSION2_D",
+        ],
+        help="Dither kernel for image scenarios",
+    )
+
     args = parser.parse_args()
 
     if args.command == "push":
@@ -284,6 +406,51 @@ def main():
             push_params["dither_kernel"] = args.dither_kernel
 
         force_push(args.device, args.scenario, args.config, **push_params)
+    elif args.command == "demo":
+        # Prepare parameters for generate_demo
+        demo_params = {}
+        if args.message:
+            demo_params['message'] = args.message
+        if args.title:
+            demo_params['title'] = args.title
+        if args.clock_in:
+            demo_params['clock_in'] = args.clock_in
+        if args.clock_out:
+            demo_params['clock_out'] = args.clock_out
+        if args.image_path:
+            demo_params["image_path"] = args.image_path
+        if args.main_title:
+            demo_params["main_title"] = args.main_title
+        if args.sub_title:
+            demo_params["sub_title"] = args.sub_title
+        if args.wakatime_url:
+            demo_params["wakatime_url"] = args.wakatime_url
+        if args.wakatime_api_key:
+            demo_params["wakatime_api_key"] = args.wakatime_api_key
+        if args.wakatime_user_id:
+            demo_params["wakatime_user_id"] = args.wakatime_user_id
+        if args.umami_host:
+            demo_params["umami_host"] = args.umami_host
+        if args.umami_website_id:
+            demo_params["umami_website_id"] = args.umami_website_id
+        if args.umami_api_key:
+            demo_params["umami_api_key"] = args.umami_api_key
+        if args.umami_time_range:
+            demo_params["umami_time_range"] = args.umami_time_range
+        if args.github_username:
+            demo_params["github_username"] = args.github_username
+        if args.github_token:
+            demo_params["github_token"] = args.github_token
+        if args.link:
+            demo_params["link"] = args.link
+        if args.border:
+            demo_params["border"] = args.border
+        if args.dither_type:
+            demo_params["dither_type"] = args.dither_type
+        if args.dither_kernel:
+            demo_params["dither_kernel"] = args.dither_kernel
+
+        generate_demo(args.scenario, args.config, args.output, **demo_params)
     else:
         # Default to daemon mode
         start_daemon(args.config)
