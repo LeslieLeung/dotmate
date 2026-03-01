@@ -22,7 +22,7 @@ class ImageParams(BaseModel):
         "JARVIS_JUDICE_NINKE",
         "DIFFUSION_ROW",
         "DIFFUSION_COLUMN",
-        "DIFFUSION2_D"
+        "DIFFUSION_2D"
     ]] = None
 
 
@@ -61,7 +61,6 @@ class ImageView(BaseView):
         # Create display request
         request = DisplayImageRequest(
             refreshNow=True,
-            deviceId=self.device_id,
             image=image_base64,
             link=image_params.link,
             border=image_params.border,
@@ -70,7 +69,7 @@ class ImageView(BaseView):
         )
 
         try:
-            response = self.client.display_image(request)
+            response = self.client.display_image(self.device_id, request)
             print(f"Image sent to {self.device_id}: {len(image_params.image_data)} bytes (Response: {response.message})")
         except Exception as e:
             print(f"Error sending image to {self.device_id}: {e}")

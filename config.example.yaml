@@ -65,17 +65,17 @@ devices:
       - cron: "*/2 * * * *"
         type: code_status
         params:
-          wakatime_url: "https://waka.ameow.xyz"
+          wakatime_url: "https://your.wakatime.site"
           wakatime_api_key: "your-wakatime-api-key-here"
           wakatime_user_id: "your-username"
           dither_type: "NONE"
-          link: "https://waka.ameow.xyz"
+          link: "https://your.wakatime.site"
 
       # 每30分钟更新网站统计数据
       - cron: "*/30 * * * *"
         type: umami_stats
         params:
-          umami_host: "https://umami.ameow.xyz"
+          umami_host: "https://your.umami.site"
           umami_website_id: "your-website-id-here"
           umami_api_key: "your-umami-api-key-here"
           umami_time_range: "24h"
@@ -89,6 +89,16 @@ devices:
           github_token: "ghp_xxxxxxxxxxxxx"
           dither_type: "NONE"
           link: "https://github.com/your-github-username"
+
+      # 每15分钟更新代码计划用量
+      - cron: "*/15 * * * *"
+        type: code_plan_usage
+        params:
+          api_url: "http://your.onwatch.site"
+          provider: "anthropic"
+          api_username: "your-username"
+          api_password: "your-password"
+          dither_type: "NONE"
 
       # 工作时间每30分钟提醒休息
       - cron: "*/30 9-17 * * 1-5"
@@ -124,6 +134,7 @@ devices:
 #     * title_image: 生成标题图像
 #     * umami_stats: Umami 网站统计数据
 #     * github_contributions: GitHub 贡献图表
+#     * code_plan_usage: 代码计划用量进度条
 #
 #   - params: 消息参数（可选），根据消息类型不同而不同：
 #
@@ -172,6 +183,16 @@ devices:
 #     github_contributions 类型参数：
 #       - github_username: GitHub 用户名（必填）
 #       - github_token: GitHub Personal Access Token（必填）
+#       - link: 点击链接（可选）
+#       - border: 边框颜色（可选）
+#       - dither_type: 抖动类型（可选）
+#       - dither_kernel: 抖动内核（可选）
+#
+#     code_plan_usage 类型参数：
+#       - api_url: API 基础 URL（必填）
+#       - provider: 提供商名称（可选，默认 "anthropic"）
+#       - api_username: Basic Auth 用户名（可选）
+#       - api_password: Basic Auth 密码（可选）
 #       - link: 点击链接（可选）
 #       - border: 边框颜色（可选）
 #       - dither_type: 抖动类型（可选）

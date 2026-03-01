@@ -11,14 +11,14 @@ class DemoClient:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
 
-    def display_text(self, payload: DisplayTextRequest) -> ApiResponse:
+    def display_text(self, device_id: str, payload: DisplayTextRequest) -> ApiResponse:
         """Mock text display - just return success."""
-        print(f"[Demo] Text message would be sent:")
+        print(f"[Demo] Text message would be sent to {device_id}:")
         print(f"  Title: {payload.title}")
         print(f"  Message: {payload.message}")
         return ApiResponse(message="Demo mode: text message not sent")
 
-    def display_image(self, payload: DisplayImageRequest) -> ApiResponse:
+    def display_image(self, device_id: str, payload: DisplayImageRequest) -> ApiResponse:
         """Save image to file instead of sending to API."""
         # Decode base64 image
         image_data = base64.b64decode(payload.image)

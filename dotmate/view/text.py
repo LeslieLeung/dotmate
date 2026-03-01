@@ -24,7 +24,6 @@ class TextView(BaseView):
         # Create display request
         request = DisplayTextRequest(
             refreshNow=True,
-            deviceId=self.device_id,
             title=text_params.title,
             message=text_params.message,
             signature=datetime.now().strftime("%H:%M"),
@@ -33,7 +32,7 @@ class TextView(BaseView):
         )
 
         try:
-            response = self.client.display_text(request)
+            response = self.client.display_text(self.device_id, request)
             print(f"Text message sent to {self.device_id}: {text_params.message} (Response: {response.message})")
         except Exception as e:
             print(f"Error sending text message to {self.device_id}: {e}")

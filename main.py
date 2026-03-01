@@ -224,7 +224,7 @@ def main():
     push_parser.add_argument("device", help="Device name or device ID")
     push_parser.add_argument(
         "scenario",
-        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions)",
+        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions, code_plan_usage)",
     )
     push_parser.add_argument("--message", help="Message for text scenario")
     push_parser.add_argument("--title", help="Title for text scenario")
@@ -263,6 +263,18 @@ def main():
         "--github-token",
         help="GitHub Personal Access Token for github_contributions scenario",
     )
+    push_parser.add_argument(
+        "--api-url", help="API base URL for code_plan_usage scenario"
+    )
+    push_parser.add_argument(
+        "--provider", help="Provider name for code_plan_usage scenario (default: anthropic)"
+    )
+    push_parser.add_argument(
+        "--api-username", help="Basic auth username for code_plan_usage scenario"
+    )
+    push_parser.add_argument(
+        "--api-password", help="Basic auth password for code_plan_usage scenario"
+    )
     push_parser.add_argument("--link", help="Optional link for image scenarios")
     push_parser.add_argument(
         "--border", type=int, help="Optional border color for image scenarios"
@@ -284,7 +296,7 @@ def main():
             "JARVIS_JUDICE_NINKE",
             "DIFFUSION_ROW",
             "DIFFUSION_COLUMN",
-            "DIFFUSION2_D",
+            "DIFFUSION_2D",
         ],
         help="Dither kernel for image scenarios",
     )
@@ -293,7 +305,7 @@ def main():
     demo_parser = subparsers.add_parser("demo", help="Generate demo PNG image without sending to device")
     demo_parser.add_argument(
         "scenario",
-        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions)",
+        help="Scenario type (e.g., work, text, code_status, image, title_image, umami_stats, github_contributions, code_plan_usage)",
     )
     demo_parser.add_argument("--output", "-o", default="demos", help="Output directory for demo images (default: demos)")
     demo_parser.add_argument("--message", help="Message for text scenario")
@@ -333,6 +345,18 @@ def main():
         "--github-token",
         help="GitHub Personal Access Token for github_contributions scenario",
     )
+    demo_parser.add_argument(
+        "--api-url", help="API base URL for code_plan_usage scenario"
+    )
+    demo_parser.add_argument(
+        "--provider", help="Provider name for code_plan_usage scenario (default: anthropic)"
+    )
+    demo_parser.add_argument(
+        "--api-username", help="Basic auth username for code_plan_usage scenario"
+    )
+    demo_parser.add_argument(
+        "--api-password", help="Basic auth password for code_plan_usage scenario"
+    )
     demo_parser.add_argument("--link", help="Optional link for image scenarios")
     demo_parser.add_argument(
         "--border", type=int, help="Optional border color for image scenarios"
@@ -354,7 +378,7 @@ def main():
             "JARVIS_JUDICE_NINKE",
             "DIFFUSION_ROW",
             "DIFFUSION_COLUMN",
-            "DIFFUSION2_D",
+            "DIFFUSION_2D",
         ],
         help="Dither kernel for image scenarios",
     )
@@ -396,6 +420,14 @@ def main():
             push_params["github_username"] = args.github_username
         if args.github_token:
             push_params["github_token"] = args.github_token
+        if args.api_url:
+            push_params["api_url"] = args.api_url
+        if args.provider:
+            push_params["provider"] = args.provider
+        if args.api_username:
+            push_params["api_username"] = args.api_username
+        if args.api_password:
+            push_params["api_password"] = args.api_password
         if args.link:
             push_params["link"] = args.link
         if args.border:
@@ -441,6 +473,14 @@ def main():
             demo_params["github_username"] = args.github_username
         if args.github_token:
             demo_params["github_token"] = args.github_token
+        if args.api_url:
+            demo_params["api_url"] = args.api_url
+        if args.provider:
+            demo_params["provider"] = args.provider
+        if args.api_username:
+            demo_params["api_username"] = args.api_username
+        if args.api_password:
+            demo_params["api_password"] = args.api_password
         if args.link:
             demo_params["link"] = args.link
         if args.border:

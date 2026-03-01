@@ -8,6 +8,7 @@ from dotmate.view.image import ImageView
 from dotmate.view.title_image import TitleImageView
 from dotmate.view.umami_stats import UmamiStatsView
 from dotmate.view.github_contributions import GitHubContributionsView
+from dotmate.view.code_plan_usage import CodePlanUsageView
 
 
 class ViewFactory:
@@ -21,6 +22,7 @@ class ViewFactory:
         "title_image": TitleImageView,
         "umami_stats": UmamiStatsView,
         "github_contributions": GitHubContributionsView,
+        "code_plan_usage": CodePlanUsageView,
     }
 
     @classmethod

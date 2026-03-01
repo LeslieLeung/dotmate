@@ -26,7 +26,8 @@ dotmate/
         ├── work.py         # 工作倒计时视图
         ├── text.py         # 文本消息视图
         ├── code_status.py  # 代码状态视图
-        └── umami_stats.py  # Umami 统计视图
+        ├── umami_stats.py  # Umami 统计视图
+        └── code_plan_usage.py  # 代码计划用量视图
 ```
 
 ## 开发环境搭建
@@ -197,21 +198,46 @@ if args.my_param:
     push_params["my_param"] = args.my_param
 ```
 
-#### 步骤 6: 更新配置文件和文档
+#### 步骤 6: 生成效果图片
+
+使用 `demo` 命令生成 View 的效果展示图片，保存到 `demos/` 目录下。这些图片用于 README 的效果展示。
+
+```bash
+# 生成效果图片（以 title_image 为例）
+python main.py demo title_image --main-title "测试标题" --sub-title "副标题"
+
+# 指定输出目录（默认为 demos/）
+python main.py demo my_custom --my-param "test value" --output "./demos"
+```
+
+生成后确认图片效果符合预期，图片文件命名规则由 DemoClient 自动处理，通常为 `demos/<view_type>.png`。
+
+#### 步骤 7: 更新配置文件和文档
+
+需要更新以下文件，确保新 View 类型的配置示例、命令行用法和效果图片都被正确记录。
 
 1. **更新 `config.example.yaml`**：
-   - 添加新 View 类型的配置示例
-   - 更新参数说明文档
+   - 在对应设备的 `schedules` 下添加新 View 类型的完整配置示例
+   - 包含所有必填参数和常用可选参数
+   - 添加参数注释说明
 
 2. **更新 `README.md`**：
-   - 在消息类型部分添加说明
-   - 添加命令行使用示例
+   - 在「效果展示」部分添加效果图片引用：`<img src="demos/my_custom.png" width="400" alt="描述">`
+   - 在「手动发送消息」部分添加 `push` 命令使用示例
+   - 在「生成 Demo 图片」部分添加 `demo` 命令使用示例
+   - 在「消息类型」部分添加新类型的详细说明，包含参数列表和效果图片
 
 3. **更新 `CLAUDE.md`**：
-   - 更新支持的 View 类型列表
-   - 添加配置示例
+   - 在 View System 描述中更新支持的 View 类型列表
+   - 在 `push` 命令示例中添加新类型的命令行用法
+   - 在 `demo` 命令示例中添加新类型的命令行用法
+   - 在配置结构示例中添加新类型的 YAML 配置
 
-#### 步骤 7: 测试
+4. **更新 `DEVELOPMENT.md`**：
+   - 在项目结构树中添加新的视图文件
+   - 如有新增字体分配，更新「当前字体分配」部分
+
+#### 步骤 8: 测试
 
 1. **参数验证测试**：
 ```bash

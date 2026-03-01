@@ -21,7 +21,7 @@ class TitleImageParams(BaseModel):
         "JARVIS_JUDICE_NINKE",
         "DIFFUSION_ROW",
         "DIFFUSION_COLUMN",
-        "DIFFUSION2_D"
+        "DIFFUSION_2D"
     ]] = None
 
 
