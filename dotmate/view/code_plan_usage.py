@@ -68,8 +68,11 @@ class CodePlanUsageView(ImageView):
         draw = ImageDraw.Draw(image)
 
         quotas = data.get("quotas", [])
-        display_quotas = [q for q in quotas if q.get("timeUntilReset")]
-        display_quotas = display_quotas[:2]
+        quota_map = {q["name"]: q for q in quotas if "name" in q}
+        display_quotas = [
+            q for name in ("five_hour", "seven_day")
+            if (q := quota_map.get(name)) is not None
+        ]
 
         title_font = self._get_font(16)
         label_font = self._get_font(13)
@@ -89,7 +92,7 @@ class CodePlanUsageView(ImageView):
             y_base = section_starts[i]
             display_name = quota.get("displayName", "Unknown")
             utilization = quota.get("utilization", 0)
-            time_until_reset = quota.get("timeUntilReset", "N/A")
+            time_until_reset = quota.get("timeUntilReset")
 
             util_text = f"{utilization:.0f}%"
 
@@ -104,7 +107,7 @@ class CodePlanUsageView(ImageView):
             self._draw_progress_bar(draw, margin_x, bar_y, bar_width, bar_height, utilization)
 
             # Reset time below the bar
-            reset_text = f"resets in {time_until_reset}"
+            reset_text = f"resets in {time_until_reset}" if time_until_reset else "N/A"
             bbox = draw.textbbox((0, 0), reset_text, font=small_font)
             reset_w = bbox[2] - bbox[0]
             draw.text(
