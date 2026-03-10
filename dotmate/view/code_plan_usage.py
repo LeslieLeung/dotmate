@@ -62,7 +62,7 @@ class CodePlanUsageView(ImageView):
         if fill_width > 0:
             draw.rectangle([x + 1, y + 1, x + 1 + fill_width, y + height - 1], fill=0)
 
-    def _generate_usage_image(self, data: dict) -> bytes:
+    def _generate_usage_image(self, data: dict, error: bool = False) -> bytes:
         width, height = 296, 152
         image = Image.new("1", (width, height), 1)
         draw = ImageDraw.Draw(image)
@@ -94,7 +94,7 @@ class CodePlanUsageView(ImageView):
             utilization = quota.get("utilization", 0)
             time_until_reset = quota.get("timeUntilReset")
 
-            util_text = f"{utilization:.0f}%"
+            util_text = "ERR" if error else f"{utilization:.0f}%"
 
             # Label left, percentage right
             draw.text((margin_x, y_base), display_name, fill=0, font=label_font)
@@ -107,7 +107,10 @@ class CodePlanUsageView(ImageView):
             self._draw_progress_bar(draw, margin_x, bar_y, bar_width, bar_height, utilization)
 
             # Reset time below the bar
-            reset_text = f"resets in {time_until_reset}" if time_until_reset else "N/A"
+            if error:
+                reset_text = "N/A"
+            else:
+                reset_text = f"resets in {time_until_reset}" if time_until_reset else "N/A"
             bbox = draw.textbbox((0, 0), reset_text, font=small_font)
             reset_w = bbox[2] - bbox[0]
             draw.text(
@@ -143,7 +146,7 @@ class CodePlanUsageView(ImageView):
                 {"displayName": "Weekly All-Model", "utilization": 0, "timeUntilReset": "N/A"},
             ]}
             try:
-                image_data = self._generate_usage_image(error_data)
+                image_data = self._generate_usage_image(error_data, error=True)
                 image_params = ImageParams(
                     image_data=image_data,
                     link=usage_params.link,
