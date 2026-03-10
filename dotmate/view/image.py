@@ -33,14 +33,42 @@ class ImageParams(BaseModel):
 class ImageView(BaseView):
     """Base view handler for image display with optional font management."""
 
+    DISPLAY_WIDTH = 296
+    DISPLAY_HEIGHT = 152
+    SCALE_FACTOR = 2
+
     def __init__(self, client, device_id: str):
         super().__init__(client, device_id)
         self.font_manager = FontManager()
         self.custom_font_name: Optional[str] = None
         self.font_weight: Optional[int] = None
+        self.enable_supersampling: bool = True
         self.show_battery_icon: bool = False
         self.show_battery_percentage: bool = False
         self.show_refresh_time: bool = False
+
+    def _s(self, value: int) -> int:
+        """Scale a pixel value by the supersampling factor. Returns value unchanged when supersampling is disabled."""
+        return value * self.SCALE_FACTOR if self.enable_supersampling else value
+
+    def _create_canvas(self) -> tuple[Image.Image, ImageDraw.ImageDraw]:
+        """Create a canvas for rendering. Uses supersampled grayscale when enabled, 1-bit otherwise."""
+        if self.enable_supersampling:
+            image = Image.new('L', (self._s(self.DISPLAY_WIDTH), self._s(self.DISPLAY_HEIGHT)), 255)
+        else:
+            image = Image.new('1', (self.DISPLAY_WIDTH, self.DISPLAY_HEIGHT), 1)
+        draw = ImageDraw.Draw(image)
+        return image, draw
+
+    def _finalize_image(self, image: Image.Image) -> bytes:
+        """Finalize image to PNG bytes. Downscales and thresholds when supersampling is enabled."""
+        if self.enable_supersampling:
+            image = image.resize((self.DISPLAY_WIDTH, self.DISPLAY_HEIGHT), Image.Resampling.LANCZOS)
+            image = image.point(lambda x: 0 if x < 128 else 255, '1')
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        buffer.seek(0)
+        return buffer.read()
 
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:

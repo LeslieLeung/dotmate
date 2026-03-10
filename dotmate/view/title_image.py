@@ -1,4 +1,3 @@
-import io
 from typing import Optional, Type, Literal, Union
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
@@ -35,14 +34,18 @@ class TitleImageView(ImageView):
 
     def _calculate_optimal_font_size(self, text: str, max_width: int, max_height: int,
                                      initial_size: int = 48, min_size: int = 16) -> int:
-        """Calculate optimal font size that fits within max_width and max_height."""
+        """Calculate optimal font size that fits within max_width and max_height.
+
+        All parameters (max_width, max_height, initial_size, min_size) should be in
+        supersampled (scaled) coordinates.
+        """
         try:
             font_size = initial_size
             while font_size >= min_size:
                 test_font = self._get_font(font_size)
 
                 # Create temporary draw to measure text
-                temp_img = Image.new('1', (1, 1), 1)
+                temp_img = Image.new('L', (1, 1), 255)
                 temp_draw = ImageDraw.Draw(temp_img)
                 bbox = temp_draw.textbbox((0, 0), text, font=test_font)
                 text_width = bbox[2] - bbox[0]
@@ -71,7 +74,7 @@ class TitleImageView(ImageView):
         current_line: list[str] = []
 
         # Create temporary draw to measure text
-        temp_img = Image.new('1', (1, 1), 1)
+        temp_img = Image.new('L', (1, 1), 255)
         temp_draw = ImageDraw.Draw(temp_img)
 
         for word in words:
@@ -125,25 +128,23 @@ class TitleImageView(ImageView):
 
     def _generate_title_image(self, main_title: str, sub_title: Optional[str] = None) -> bytes:
         """Generate a 296x152 PNG image with centered titles and return PNG binary data."""
-        # Create image with white background (1-bit black and white for e-ink display)
-        width, height = 296, 152
+        image, draw = self._create_canvas()
+        width, height = image.size
         max_text_width = int(width * 2 / 3)  # Use at most 2/3 of width
-        image = Image.new('1', (width, height), 1)  # 1-bit mode, 1=white, 0=black
-        draw = ImageDraw.Draw(image)
 
         try:
             if sub_title:
                 # Both titles - calculate optimal sizes for each
-                available_height = height - 20  # Leave some padding
+                available_height = height - self._s(20)  # Leave some padding
                 main_height_allocation = int(available_height * 0.6)  # 60% for main title
                 sub_height_allocation = int(available_height * 0.4)   # 40% for sub title
 
-                # Calculate optimal font sizes
+                # Calculate optimal font sizes (in scaled coordinates)
                 main_font_size = self._calculate_optimal_font_size(
-                    main_title, max_text_width, main_height_allocation, initial_size=42
+                    main_title, max_text_width, main_height_allocation, initial_size=self._s(42)
                 )
                 sub_font_size = self._calculate_optimal_font_size(
-                    sub_title, max_text_width, sub_height_allocation, initial_size=32
+                    sub_title, max_text_width, sub_height_allocation, initial_size=self._s(32)
                 )
 
                 # Create fonts
@@ -165,13 +166,14 @@ class TitleImageView(ImageView):
                 # Calculate total text block height (remove extra spacing between lines)
                 total_main_height = len(main_lines) * main_line_height
                 total_sub_height = len(sub_lines) * sub_line_height
-                total_text_height = total_main_height + total_sub_height + 15  # spacing between title blocks
+                spacing = self._s(15)
+                total_text_height = total_main_height + total_sub_height + spacing
 
                 # Calculate starting Y position to center the entire text block
                 start_y = (height - total_text_height) // 2
 
                 # Ensure minimum top padding
-                start_y = max(start_y, 10)
+                start_y = max(start_y, self._s(10))
 
                 # Draw main title lines
                 current_y = start_y
@@ -180,7 +182,7 @@ class TitleImageView(ImageView):
                     current_y += main_line_height
 
                 # Add spacing between title blocks
-                current_y += 15
+                current_y += spacing
 
                 # Draw sub title lines
                 for line in sub_lines:
@@ -189,9 +191,9 @@ class TitleImageView(ImageView):
 
             else:
                 # Only main title - calculate optimal size for available space
-                available_height = height - 20  # Leave some padding
+                available_height = height - self._s(20)  # Leave some padding
                 main_font_size = self._calculate_optimal_font_size(
-                    main_title, max_text_width, available_height, initial_size=48
+                    main_title, max_text_width, available_height, initial_size=self._s(48)
                 )
 
                 # Create font
@@ -213,7 +215,7 @@ class TitleImageView(ImageView):
                 start_y = (height - total_text_height) // 2
 
                 # Ensure minimum top padding
-                start_y = max(start_y, 10)
+                start_y = max(start_y, self._s(10))
 
                 # Draw main title lines
                 current_y = start_y
@@ -221,11 +223,7 @@ class TitleImageView(ImageView):
                     self._draw_text_with_size(draw, line, main_font, main_font_size, width, current_y)
                     current_y += main_line_height
 
-            # Convert to PNG binary data
-            buffer = io.BytesIO()
-            image.save(buffer, format='PNG')
-            buffer.seek(0)
-            return buffer.read()
+            return self._finalize_image(image)
 
         except Exception as e:
             raise Exception(f"Error generating title image: {e}")

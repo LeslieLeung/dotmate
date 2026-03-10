@@ -1,10 +1,9 @@
-import io
 from datetime import datetime, timedelta
 from typing import Type, Optional, Literal
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 
 
 class GitHubContributionsParams(BaseModel):
@@ -35,6 +34,7 @@ class GitHubContributionsView(ImageView):
     def __init__(self, client, device_id: str):
         super().__init__(client, device_id)
         self.custom_font_name = "Hack-Bold"
+        self.enable_supersampling = False
 
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
@@ -108,28 +108,24 @@ class GitHubContributionsView(ImageView):
         return grayscale_map.get(level, 1)
 
     def _draw_contribution_cell(self, draw, x, y, size, level):
-        """Draw a single contribution cell with pattern based on level."""
+        """Draw a single contribution cell with grayscale level for supersampled rendering."""
+        border = self._s(1)
+        # Draw black border background
+        draw.rectangle([x, y, x + size, y + size], fill=0)
+        # Draw inner fill
         if level == 0:
-            # Empty - white
-            draw.rectangle([x, y, x + size, y + size], fill=1, outline=0)
+            draw.rectangle(
+                [x + border, y + border, x + size - border, y + size - border], fill=255
+            )
         elif level == 1:
-            # Light - white with sparse dots
-            draw.rectangle([x, y, x + size, y + size], fill=1, outline=0)
-            # Add sparse pattern
-            for dx in range(0, size, 3):
-                for dy in range(0, size, 3):
-                    if (dx + dy) % 4 == 0:
-                        draw.point((x + dx, y + dy), fill=0)
+            draw.rectangle(
+                [x + border, y + border, x + size - border, y + size - border], fill=192
+            )
         elif level == 2:
-            # Medium - checkerboard pattern
-            draw.rectangle([x, y, x + size, y + size], fill=1, outline=0)
-            for dx in range(size):
-                for dy in range(size):
-                    if (dx + dy) % 2 == 0:
-                        draw.point((x + dx, y + dy), fill=0)
-        else:
-            # Dark - solid black
-            draw.rectangle([x, y, x + size, y + size], fill=0, outline=0)
+            draw.rectangle(
+                [x + border, y + border, x + size - border, y + size - border], fill=96
+            )
+        # level 3: solid black, no inner fill needed
 
     def _format_number(self, value: int) -> str:
         """Format number with K/M suffix for large numbers."""
@@ -142,9 +138,8 @@ class GitHubContributionsView(ImageView):
 
     def _generate_github_image(self, github_data: dict) -> bytes:
         """Generate a 296x152 PNG image with GitHub contributions and return PNG binary data."""
-        width, height = 296, 152
-        image = Image.new("1", (width, height), 1)  # 1-bit mode, 1=white, 0=black
-        draw = ImageDraw.Draw(image)
+        image, draw = self._create_canvas()
+        width, height = image.size
 
         try:
             # Extract user data
@@ -162,40 +157,46 @@ class GitHubContributionsView(ImageView):
             weeks = contribution_calendar.get("weeks", [])
 
             # --- Top Section: User Info ---
-            top_section_height = 60
+            top_section_height = self._s(60)
 
-            # Font sizes
-            username_font_size = 16
-            stats_font_size = 12
+            # Font sizes (scaled)
+            username_font_size = self._s(16)
+            stats_font_size = self._s(12)
 
             username_font = self._get_font(username_font_size)
             stats_font = self._get_font(stats_font_size)
 
             # Draw username at top left
-            draw.text((10, 8), username, fill=0, font=username_font)
+            draw.text((self._s(10), self._s(8)), username, fill=0, font=username_font)
 
             # Draw stats below username
             followers_text = f"Followers: {self._format_number(followers)}"
             stars_text = f"Stars: {self._format_number(total_stars)}"
 
-            draw.text((10, 28), followers_text, fill=0, font=stats_font)
-            draw.text((10, 44), stars_text, fill=0, font=stats_font)
+            draw.text(
+                (self._s(10), self._s(28)), followers_text, fill=0, font=stats_font
+            )
+            draw.text((self._s(10), self._s(44)), stars_text, fill=0, font=stats_font)
 
             # Draw separator line
-            draw.line([(0, top_section_height), (width, top_section_height)], fill=0)
+            draw.line(
+                [(0, top_section_height), (width, top_section_height)],
+                fill=0,
+                width=self._s(1),
+            )
 
             # --- Bottom Section: Contribution Grid ---
-            grid_top = top_section_height + 8
-            grid_bottom = height - 5
-            grid_left = 5
-            grid_right = width - 5
+            grid_top = top_section_height + self._s(8)
+            grid_bottom = height - self._s(5)
+            grid_left = self._s(5)
+            grid_right = width - self._s(5)
 
             # Available space
             available_width = grid_right - grid_left
             available_height = grid_bottom - grid_top
 
             # Gap between cells
-            gap = 2
+            gap = self._s(2)
 
             # Calculate how many weeks we can display
             # Each week needs 7 rows (days), calculate cell size based on height
@@ -208,7 +209,9 @@ class GitHubContributionsView(ImageView):
             num_weeks = min(max_weeks, len(weeks))
 
             # Use the cell size calculated from height
-            cell_size = max(cell_size_from_height, 4)  # Minimum 4 pixels
+            cell_size = max(
+                cell_size_from_height, self._s(4)
+            )  # Minimum 4 pixels (scaled)
 
             # Get the most recent weeks
             last_weeks = weeks[-num_weeks:] if len(weeks) >= num_weeks else weeks
@@ -229,23 +232,18 @@ class GitHubContributionsView(ImageView):
 
                     self._draw_contribution_cell(draw, x, y, cell_size, level)
 
-            # Convert to PNG binary data
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-            return buffer.read()
+            return self._finalize_image(image)
 
         except Exception as e:
             raise Exception(f"Error generating GitHub contributions image: {e}")
 
     def _generate_error_image(self) -> bytes:
         """Generate an error image when GitHub API fails."""
-        width, height = 296, 152
-        image = Image.new("1", (width, height), 1)
-        draw = ImageDraw.Draw(image)
+        image, draw = self._create_canvas()
+        width, height = image.size
 
-        error_font = self._get_font(16)
-        small_font = self._get_font(12)
+        error_font = self._get_font(self._s(16))
+        small_font = self._get_font(self._s(12))
 
         # Draw error message
         error_text = "GitHub API Error"
@@ -253,24 +251,26 @@ class GitHubContributionsView(ImageView):
         text_width = bbox[2] - bbox[0]
         text_x = (width - text_width) // 2
 
-        draw.text((text_x, 50), error_text, fill=0, font=error_font)
+        draw.text((text_x, self._s(50)), error_text, fill=0, font=error_font)
 
         sub_text = "Check credentials"
         bbox = draw.textbbox((0, 0), sub_text, font=small_font)
         sub_width = bbox[2] - bbox[0]
         sub_x = (width - sub_width) // 2
 
-        draw.text((sub_x, 80), sub_text, fill=0, font=small_font)
+        draw.text((sub_x, self._s(80)), sub_text, fill=0, font=small_font)
 
         # Add timestamp
         timestamp = datetime.now().strftime("%H:%M")
-        timestamp_font = self._get_font(10)
-        draw.text((width - 40, height - 15), timestamp, fill=0, font=timestamp_font)
+        timestamp_font = self._get_font(self._s(10))
+        draw.text(
+            (width - self._s(40), height - self._s(15)),
+            timestamp,
+            fill=0,
+            font=timestamp_font,
+        )
 
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-        return buffer.read()
+        return self._finalize_image(image)
 
     def execute(self, params: BaseModel) -> None:
         """Generate GitHub contributions image and send to device."""

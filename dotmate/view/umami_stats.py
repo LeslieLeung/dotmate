@@ -1,10 +1,9 @@
-import io
 from datetime import datetime, timedelta
 from typing import Type, Optional, Literal
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 
 
 class UmamiStatsParams(BaseModel):
@@ -130,9 +129,8 @@ class UmamiStatsView(ImageView):
 
     def _generate_stats_image(self, stats_data: dict, time_range: str, title: Optional[str] = None) -> bytes:
         """Generate a 296x152 PNG image with website statistics and return PNG binary data."""
-        width, height = 296, 152
-        image = Image.new("1", (width, height), 1)  # 1-bit mode, 1=white, 0=black
-        draw = ImageDraw.Draw(image)
+        image, draw = self._create_canvas()
+        width, height = image.size
 
         try:
             # Extract data (current and previous values)
@@ -161,11 +159,11 @@ class UmamiStatsView(ImageView):
             bounces_change, bounces_symbol = self._calculate_change_percentage(bounces, bounces_prev)
             totaltime_change, totaltime_symbol = self._calculate_change_percentage(totaltime, totaltime_prev)
 
-            # Font sizes
-            title_font_size = 18
-            label_font_size = 14
-            value_font_size = 20
-            change_font_size = 12  # Larger font for triangles and percentage
+            # Font sizes (scaled)
+            title_font_size = self._s(18)
+            label_font_size = self._s(14)
+            value_font_size = self._s(20)
+            change_font_size = self._s(12)
 
             # Get fonts
             title_font = self._get_font(title_font_size)
@@ -181,12 +179,11 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), title_text, font=title_font)
             title_width = bbox[2] - bbox[0]
             title_x = (width - title_width) // 2
-            draw.text((title_x, 8), title_text, fill=0, font=title_font)
+            draw.text((title_x, self._s(8)), title_text, fill=0, font=title_font)
 
             # Layout: First row (PV, UV), Second row (visits, bounces, totaltime)
-            # First row starts at y=32
-            row1_y = 32
-            row2_y = 90
+            row1_y = self._s(32)
+            row2_y = self._s(90)
 
             # First row: 2 columns (PV, UV)
             col_width_2 = width // 2
@@ -200,13 +197,12 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), pv_str, font=value_font)
             value_width = bbox[2] - bbox[0]
             value_x = (col_width_2 - value_width) // 2
-            draw.text((value_x, row1_y + 18), pv_str, fill=0, font=value_font)
+            draw.text((value_x, row1_y + self._s(18)), pv_str, fill=0, font=value_font)
 
-            # Draw PV change with large triangle before percentage
             pv_combined = f"{pv_symbol}{pv_change}" if pv_symbol else pv_change
             bbox = draw.textbbox((0, 0), pv_combined, font=change_font)
             combined_width = bbox[2] - bbox[0]
-            draw.text(((col_width_2 - combined_width) // 2, row1_y + 42), pv_combined, fill=0, font=change_font)
+            draw.text(((col_width_2 - combined_width) // 2, row1_y + self._s(42)), pv_combined, fill=0, font=change_font)
 
             # Draw UV (right column)
             uv_label = "UV"
@@ -217,13 +213,12 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), uv_str, font=value_font)
             value_width = bbox[2] - bbox[0]
             value_x = col_width_2 + (col_width_2 - value_width) // 2
-            draw.text((value_x, row1_y + 18), uv_str, fill=0, font=value_font)
+            draw.text((value_x, row1_y + self._s(18)), uv_str, fill=0, font=value_font)
 
-            # Draw UV change with large triangle before percentage
             uv_combined = f"{uv_symbol}{uv_change}" if uv_symbol else uv_change
             bbox = draw.textbbox((0, 0), uv_combined, font=change_font)
             combined_width = bbox[2] - bbox[0]
-            draw.text((col_width_2 + (col_width_2 - combined_width) // 2, row1_y + 42), uv_combined, fill=0, font=change_font)
+            draw.text((col_width_2 + (col_width_2 - combined_width) // 2, row1_y + self._s(42)), uv_combined, fill=0, font=change_font)
 
             # Second row: 3 columns (visits, bounces, totaltime)
             col_width_3 = width // 3
@@ -237,13 +232,12 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), visits_str, font=value_font)
             value_width = bbox[2] - bbox[0]
             value_x = (col_width_3 - value_width) // 2
-            draw.text((value_x, row2_y + 16), visits_str, fill=0, font=value_font)
+            draw.text((value_x, row2_y + self._s(16)), visits_str, fill=0, font=value_font)
 
-            # Draw visits change with large triangle before percentage
             visits_combined = f"{visits_symbol}{visits_change}" if visits_symbol else visits_change
             bbox = draw.textbbox((0, 0), visits_combined, font=change_font)
             combined_width = bbox[2] - bbox[0]
-            draw.text(((col_width_3 - combined_width) // 2, row2_y + 38), visits_combined, fill=0, font=change_font)
+            draw.text(((col_width_3 - combined_width) // 2, row2_y + self._s(38)), visits_combined, fill=0, font=change_font)
 
             # Draw bounces (middle column)
             bounces_label = "Bounces"
@@ -254,13 +248,12 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), bounces_str, font=value_font)
             value_width = bbox[2] - bbox[0]
             value_x = col_width_3 + (col_width_3 - value_width) // 2
-            draw.text((value_x, row2_y + 16), bounces_str, fill=0, font=value_font)
+            draw.text((value_x, row2_y + self._s(16)), bounces_str, fill=0, font=value_font)
 
-            # Draw bounces change with large triangle before percentage
             bounces_combined = f"{bounces_symbol}{bounces_change}" if bounces_symbol else bounces_change
             bbox = draw.textbbox((0, 0), bounces_combined, font=change_font)
             combined_width = bbox[2] - bbox[0]
-            draw.text((col_width_3 + (col_width_3 - combined_width) // 2, row2_y + 38), bounces_combined, fill=0, font=change_font)
+            draw.text((col_width_3 + (col_width_3 - combined_width) // 2, row2_y + self._s(38)), bounces_combined, fill=0, font=change_font)
 
             # Draw totaltime (right column)
             time_label = "Time"
@@ -271,19 +264,14 @@ class UmamiStatsView(ImageView):
             bbox = draw.textbbox((0, 0), totaltime_str, font=value_font)
             value_width = bbox[2] - bbox[0]
             value_x = 2 * col_width_3 + (col_width_3 - value_width) // 2
-            draw.text((value_x, row2_y + 16), totaltime_str, fill=0, font=value_font)
+            draw.text((value_x, row2_y + self._s(16)), totaltime_str, fill=0, font=value_font)
 
-            # Draw totaltime change with large triangle before percentage
             totaltime_combined = f"{totaltime_symbol}{totaltime_change}" if totaltime_symbol else totaltime_change
             bbox = draw.textbbox((0, 0), totaltime_combined, font=change_font)
             combined_width = bbox[2] - bbox[0]
-            draw.text((2 * col_width_3 + (col_width_3 - combined_width) // 2, row2_y + 38), totaltime_combined, fill=0, font=change_font)
+            draw.text((2 * col_width_3 + (col_width_3 - combined_width) // 2, row2_y + self._s(38)), totaltime_combined, fill=0, font=change_font)
 
-            # Convert to PNG binary data
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-            return buffer.read()
+            return self._finalize_image(image)
 
         except Exception as e:
             raise Exception(f"Error generating stats image: {e}")

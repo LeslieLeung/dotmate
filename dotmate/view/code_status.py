@@ -1,10 +1,9 @@
-import io
 from datetime import datetime
 from typing import Type, Optional, Literal
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 import base64
 
 
@@ -70,9 +69,8 @@ class CodeStatusView(ImageView):
 
     def _generate_status_image(self, wakatime_data: dict) -> bytes:
         """Generate a 296x152 PNG image with coding status and return PNG binary data."""
-        width, height = 296, 152
-        image = Image.new("1", (width, height), 1)  # 1-bit mode, 1=white, 0=black
-        draw = ImageDraw.Draw(image)
+        image, draw = self._create_canvas()
+        width, height = image.size
 
         try:
             # Extract data
@@ -103,20 +101,20 @@ class CodeStatusView(ImageView):
             else:
                 lines = ["Today's Coding", "No coding time", "tracked today"]
 
-            # Font sizes (increased)
-            title_font_size = 22
-            content_font_size = 16
-            small_font_size = 14
+            # Font sizes (scaled for supersampling)
+            title_font_size = self._s(22)
+            content_font_size = self._s(16)
+            small_font_size = self._s(14)
 
             # Get fonts (use custom font if set)
             title_font = self._get_font(title_font_size)
             content_font = self._get_font(content_font_size)
             small_font = self._get_font(small_font_size)
 
-            # Calculate line heights (adjusted for larger fonts)
-            title_line_height = 28
-            content_line_height = 20
-            small_line_height = 18
+            # Calculate line heights (scaled)
+            title_line_height = self._s(28)
+            content_line_height = self._s(20)
+            small_line_height = self._s(18)
 
             # Calculate total height dynamically
             total_height = title_line_height
@@ -127,7 +125,7 @@ class CodeStatusView(ImageView):
                     total_height += content_line_height
 
             # Start position (centered vertically)
-            start_y = max((height - total_height) // 2, 8)
+            start_y = max((height - total_height) // 2, self._s(8))
 
             # Draw title (first line)
             title_text = lines[0]
@@ -155,21 +153,17 @@ class CodeStatusView(ImageView):
 
             # Add timestamp at bottom right
             timestamp = datetime.now().strftime("%H:%M")
-            timestamp_font = self._get_font(12)
+            timestamp_font = self._get_font(self._s(12))
             bbox = draw.textbbox((0, 0), timestamp, font=timestamp_font)
             timestamp_width = bbox[2] - bbox[0]
             draw.text(
-                (width - timestamp_width - 8, height - 16),
+                (width - timestamp_width - self._s(8), height - self._s(16)),
                 timestamp,
                 fill=0,
                 font=timestamp_font,
             )
 
-            # Convert to PNG binary data
-            buffer = io.BytesIO()
-            image.save(buffer, format="PNG")
-            buffer.seek(0)
-            return buffer.read()
+            return self._finalize_image(image)
 
         except Exception as e:
             raise Exception(f"Error generating status image: {e}")

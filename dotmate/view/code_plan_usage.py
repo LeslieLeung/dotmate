@@ -1,9 +1,8 @@
-import io
 from typing import Type, Optional, Literal
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from PIL import Image, ImageDraw
+from PIL import ImageDraw
 
 
 class CodePlanUsageParams(BaseModel):
@@ -36,6 +35,7 @@ class CodePlanUsageView(ImageView):
     def __init__(self, client, device_id: str):
         super().__init__(client, device_id)
         self.custom_font_name = "Hack-Bold"
+        self.enable_supersampling = False
 
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
@@ -57,15 +57,25 @@ class CodePlanUsageView(ImageView):
         utilization: float,
     ) -> None:
         """Draw a progress bar with outline and filled portion."""
-        draw.rectangle([x, y, x + width, y + height], outline=0, fill=1)
-        fill_width = int((min(utilization, 100) / 100) * (width - 2))
+        border = self._s(1)
+        # Draw black background (acts as the border)
+        draw.rectangle([x, y, x + width, y + height], fill=0)
+        # Draw white interior
+        draw.rectangle(
+            [x + border, y + border, x + width - border, y + height - border], fill=255
+        )
+        # Draw fill portion inside the border
+        inner_width = width - 2 * border
+        fill_width = int((min(utilization, 100) / 100) * inner_width)
         if fill_width > 0:
-            draw.rectangle([x + 1, y + 1, x + 1 + fill_width, y + height - 1], fill=0)
+            draw.rectangle(
+                [x + border, y + border, x + border + fill_width, y + height - border],
+                fill=0,
+            )
 
     def _generate_usage_image(self, data: dict, error: bool = False) -> bytes:
-        width, height = 296, 152
-        image = Image.new("1", (width, height), 1)
-        draw = ImageDraw.Draw(image)
+        image, draw = self._create_canvas()
+        width, height = image.size
 
         quotas = data.get("quotas", [])
         quota_map = {q["name"]: q for q in quotas if "name" in q}
@@ -74,19 +84,21 @@ class CodePlanUsageView(ImageView):
             if (q := quota_map.get(name)) is not None
         ]
 
-        title_font = self._get_font(16)
-        label_font = self._get_font(13)
-        small_font = self._get_font(11)
+        title_font = self._get_font(self._s(16))
+        label_font = self._get_font(self._s(13))
+        small_font = self._get_font(self._s(11))
 
         title_text = "Code Plan Usage"
         bbox = draw.textbbox((0, 0), title_text, font=title_font)
         title_w = bbox[2] - bbox[0]
-        draw.text(((width - title_w) // 2, 5), title_text, fill=0, font=title_font)
+        draw.text(
+            ((width - title_w) // 2, self._s(5)), title_text, fill=0, font=title_font
+        )
 
-        margin_x = 10
+        margin_x = self._s(10)
         bar_width = width - 2 * margin_x
-        bar_height = 14
-        section_starts = [30, 84]
+        bar_height = self._s(14)
+        section_starts = [self._s(30), self._s(84)]
 
         for i, quota in enumerate(display_quotas):
             y_base = section_starts[i]
@@ -103,7 +115,7 @@ class CodePlanUsageView(ImageView):
             draw.text((width - margin_x - util_w, y_base), util_text, fill=0, font=label_font)
 
             # Progress bar
-            bar_y = y_base + 18
+            bar_y = y_base + self._s(18)
             self._draw_progress_bar(draw, margin_x, bar_y, bar_width, bar_height, utilization)
 
             # Reset time below the bar
@@ -114,14 +126,13 @@ class CodePlanUsageView(ImageView):
             bbox = draw.textbbox((0, 0), reset_text, font=small_font)
             reset_w = bbox[2] - bbox[0]
             draw.text(
-                (width - margin_x - reset_w, bar_y + bar_height + 3),
-                reset_text, fill=0, font=small_font,
+                (width - margin_x - reset_w, bar_y + bar_height + self._s(3)),
+                reset_text,
+                fill=0,
+                font=small_font,
             )
 
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        buffer.seek(0)
-        return buffer.read()
+        return self._finalize_image(image)
 
     def execute(self, params: BaseModel) -> None:
         usage_params = CodePlanUsageParams(**params.model_dump())
