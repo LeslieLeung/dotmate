@@ -41,11 +41,16 @@ def setup_scheduler(config_path: str = "config.yaml"):
                     )
                     continue
                 if schedule.type in ViewFactory.get_available_types():
+                    overlay = {
+                        "show_battery_icon": device.show_battery_icon,
+                        "show_battery_percentage": device.show_battery_percentage,
+                        "show_refresh_time": device.show_refresh_time,
+                    }
                     # Add job using factory pattern
                     scheduler.add_job(
                         func=ViewFactory.execute_view,
                         trigger=CronTrigger.from_crontab(schedule.cron),
-                        args=[schedule.type, client, device.device_id, schedule.params or {}],
+                        args=[schedule.type, client, device.device_id, schedule.params or {}, overlay],
                         id=f"{schedule.type}_{device.name}_{schedule.cron}",
                         name=f"{schedule.type.capitalize()} job for {device.name}"
                     )
@@ -171,8 +176,13 @@ def force_push(device_name_or_id: str, scenario: str, config_path: str = "config
                     print(f"Error reading image file {image_path}: {e}")
                     sys.exit(1)
 
-            print(f"Sending {scenario} message to device '{target_device.name}' ({target_device.device_id})")
-            ViewFactory.execute_view(scenario, client, target_device.device_id, scenario_params)
+            overlay = {
+                "show_battery_icon": target_device.show_battery_icon,
+                "show_battery_percentage": target_device.show_battery_percentage,
+                "show_refresh_time": target_device.show_refresh_time,
+            }
+            print(f"Sending {scenario} message to device '{target_device.name}' ({target_device.device_id}), overlay settings: {overlay}")
+            ViewFactory.execute_view(scenario, client, target_device.device_id, scenario_params, overlay)
         else:
             print(f"Unknown or unsupported scenario: {scenario}")
             available_types = ViewFactory.get_available_types()

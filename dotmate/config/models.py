@@ -13,6 +13,9 @@ class Schedule(BaseModel):
 class Device(BaseModel):
     name: str
     device_id: str
+    show_battery_icon: bool = False
+    show_battery_percentage: bool = False
+    show_refresh_time: bool = False
     schedules: Optional[List[Schedule]] = None
 
 

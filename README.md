@@ -265,6 +265,22 @@ python main.py demo title_image --main-title "测试" --output "./my-demos"
 
 <img src="demos/code_plan_usage.png" width="300" alt="代码计划用量效果">
 
+## 状态叠加层（Overlay）
+
+对于图像类型的消息，可以在右下角叠加显示设备电池状态和刷新时间。该功能在设备级别配置，对该设备下所有图像类消息生效。
+
+```yaml
+devices:
+  - name: "我的设备"
+    device_id: "device-001"
+    show_battery_icon: true        # 显示电池图标
+    show_battery_percentage: true   # 显示电量百分比（如 85%）
+    show_refresh_time: true         # 显示最近刷新时间（如 17:10）
+```
+
+- 充电状态下会显示 `+` 标识
+- 仅对图像类消息（work、code_status、image、title_image、umami_stats、github_contributions、code_plan_usage）生效，文本消息不受影响
+
 ## 配置说明
 
 配置文件使用 YAML 格式，主要包含：
@@ -273,6 +289,9 @@ python main.py demo title_image --main-title "测试" --output "./my-demos"
 - `devices`: 设备列表
   - `name`: 设备名称
   - `device_id`: 设备唯一标识符
+  - `show_battery_icon`: 在图像右下角显示电池图标（可选，默认 `false`）
+  - `show_battery_percentage`: 在图像右下角显示电量百分比（可选，默认 `false`）
+  - `show_refresh_time`: 在图像右下角显示刷新时间（可选，默认 `false`）
   - `schedules`: 定时任务列表
     - `cron`: Cron 表达式
     - `type`: 消息类型

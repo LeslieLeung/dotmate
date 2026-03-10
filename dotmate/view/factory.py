@@ -45,9 +45,14 @@ class ViewFactory:
         return list(cls._view_registry.keys())
 
     @classmethod
-    def execute_view(cls, view_type: str, client: DotClient, device_id: str, params: Any) -> None:
+    def execute_view(cls, view_type: str, client: DotClient, device_id: str, params: Any, overlay_settings: dict = None) -> None:
         """Create and execute a view in one call."""
         view = cls.create_view(view_type, client, device_id)
+
+        if overlay_settings and isinstance(view, ImageView):
+            view.show_battery_icon = overlay_settings.get("show_battery_icon", False)
+            view.show_battery_percentage = overlay_settings.get("show_battery_percentage", False)
+            view.show_refresh_time = overlay_settings.get("show_refresh_time", False)
 
         # If params is a dict, create proper params object
         if isinstance(params, dict):

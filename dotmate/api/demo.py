@@ -1,7 +1,7 @@
 import base64
 from datetime import datetime
 from pathlib import Path
-from dotmate.api.api import DisplayTextRequest, DisplayImageRequest, ApiResponse
+from dotmate.api.api import DisplayTextRequest, DisplayImageRequest, ApiResponse, DeviceStatus
 
 
 class DemoClient:
@@ -44,3 +44,7 @@ class DemoClient:
             print(f"  Dither Kernel: {payload.ditherKernel}")
 
         return ApiResponse(message=f"Demo mode: image saved to {output_path}")
+
+    def get_device_status(self, device_id: str) -> DeviceStatus:
+        """Return dummy device status for demo mode."""
+        return DeviceStatus(deviceId=device_id, status={"battery": "100%"}, renderInfo={})

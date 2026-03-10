@@ -9,6 +9,10 @@ devices:
   # 设备示例 1：办公室设备，包含多种消息类型
   - name: "办公室设备"
     device_id: "office-device-001"
+    # 在图像右下角显示电池和刷新时间（仅对图像类型生效）
+    show_battery_icon: true
+    show_battery_percentage: true
+    show_refresh_time: true
     schedules:
       # 每5分钟检查代码状态
       - cron: "*/5 * * * *"
@@ -115,6 +119,9 @@ devices:
 # devices:
 #   - name: 设备的友好名称，用于识别和命令行操作
 #   - device_id: 设备的唯一标识符，通常由服务提供商分配
+#   - show_battery_icon: 在图像右下角显示电池图标（可选，默认 false）
+#   - show_battery_percentage: 在图像右下角显示电量百分比（可选，默认 false）
+#   - show_refresh_time: 在图像右下角显示刷新时间（可选，默认 false）
 #   - schedules: 该设备的定时任务列表
 #
 # schedules:
