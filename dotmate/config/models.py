@@ -21,6 +21,7 @@ class Device(BaseModel):
 
 class Config(BaseModel):
     api_key: str
+    request_interval: float = 1.0
     devices: List[Device]
 
 

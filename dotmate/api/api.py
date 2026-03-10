@@ -1,5 +1,7 @@
 import requests
 import logging
+import threading
+import time
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 
@@ -67,13 +69,26 @@ class DeviceTask(BaseModel):
 
 
 class DotClient:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, request_interval: float = 1.0):
         self.api_key = api_key
         self.base_url = "https://dot.mindreset.tech/api/authV2/open/device"
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        self._request_interval = request_interval
+        self._last_request_time: float = 0.0
+        self._lock = threading.Lock()
+
+    def _rate_limited_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        with self._lock:
+            elapsed = time.monotonic() - self._last_request_time
+            wait = self._request_interval - elapsed
+            if wait > 0:
+                time.sleep(wait)
+            response = requests.request(method, url, **kwargs)
+            self._last_request_time = time.monotonic()
+        return response
 
     def _handle_response(self, response: requests.Response) -> "ApiResponse":
         """Unified response handling with error checking and JSON parsing."""
@@ -100,7 +115,7 @@ class DotClient:
         request_data = payload.model_dump(exclude_none=True)
         logger.info(f"Sending text display request to {url}")
         logger.info(f"Request parameters: {request_data}")
-        response = requests.post(url, json=request_data, headers=self.headers)
+        response = self._rate_limited_request("POST", url, json=request_data, headers=self.headers)
         return self._handle_response(response)
 
     def display_image(self, device_id: str, payload: DisplayImageRequest) -> "ApiResponse":
@@ -112,13 +127,13 @@ class DotClient:
         }
         logger.info(f"Sending image display request to {url}")
         logger.info(f"Request parameters: {log_data}")
-        response = requests.post(url, json=request_data, headers=self.headers)
+        response = self._rate_limited_request("POST", url, json=request_data, headers=self.headers)
         return self._handle_response(response)
 
     def get_device_status(self, device_id: str) -> "DeviceStatus":
         url = f"{self.base_url}/{device_id}/status"
         logger.info(f"Getting device status from {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._rate_limited_request("GET", url, headers=self.headers)
         response.encoding = "utf-8"
 
         if not response.ok:
@@ -134,13 +149,13 @@ class DotClient:
     def switch_next_content(self, device_id: str) -> "ApiResponse":
         url = f"{self.base_url}/{device_id}/next"
         logger.info(f"Switching to next content for device {device_id}")
-        response = requests.post(url, headers=self.headers)
+        response = self._rate_limited_request("POST", url, headers=self.headers)
         return self._handle_response(response)
 
     def list_device_content(self, device_id: str, task_type: str = "loop") -> List["DeviceTask"]:
         url = f"{self.base_url}/{device_id}/{task_type}/list"
         logger.info(f"Listing device content from {url}")
-        response = requests.get(url, headers=self.headers)
+        response = self._rate_limited_request("GET", url, headers=self.headers)
         response.encoding = "utf-8"
 
         if not response.ok:

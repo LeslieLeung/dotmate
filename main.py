@@ -28,7 +28,7 @@ def setup_scheduler(config_path: str = "config.yaml"):
         print(f"Error loading config: {e}")
         sys.exit(1)
 
-    client = DotClient(config.api_key)
+    client = DotClient(config.api_key, request_interval=config.request_interval)
     scheduler = BlockingScheduler()
 
     # Add jobs for each device and schedule
@@ -129,7 +129,7 @@ def force_push(device_name_or_id: str, scenario: str, config_path: str = "config
         print(f"Error loading config: {e}")
         sys.exit(1)
 
-    client = DotClient(config.api_key)
+    client = DotClient(config.api_key, request_interval=config.request_interval)
 
     # Find device by name or ID
     target_device = None

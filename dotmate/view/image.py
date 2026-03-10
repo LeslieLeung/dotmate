@@ -1,7 +1,6 @@
 import base64
 import io
 import re
-import time
 from datetime import datetime
 from typing import Optional, Type, Literal, Union
 from pydantic import BaseModel
@@ -237,7 +236,6 @@ class ImageView(BaseView):
                     "image_data": self._draw_overlay(image_params.image_data),
                 }
             )
-            time.sleep(1)
 
         # Encode image data
         image_base64 = self._encode_image_data(image_params.image_data)
