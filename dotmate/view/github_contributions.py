@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Type, Optional, Literal
+from typing import Type, Optional, Literal, Union
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
@@ -10,7 +10,7 @@ class GitHubContributionsParams(BaseModel):
     github_username: str
     github_token: str
     link: Optional[str] = None
-    border: Optional[int] = None
+    border: Optional[Literal[0, 1]] = None
     dither_type: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = "NONE"
     dither_kernel: Optional[
         Literal[
@@ -26,6 +26,8 @@ class GitHubContributionsParams(BaseModel):
             "DIFFUSION_2D",
         ]
     ] = None
+    task_key: Optional[str] = None
+    task_alias: Optional[Union[str, int]] = None
 
 
 class GitHubContributionsView(ImageView):
@@ -290,6 +292,8 @@ class GitHubContributionsView(ImageView):
                 border=github_params.border,
                 dither_type=github_params.dither_type,
                 dither_kernel=github_params.dither_kernel,
+                task_key=github_params.task_key,
+                task_alias=github_params.task_alias,
             )
 
             # Use parent's execute method
@@ -306,6 +310,8 @@ class GitHubContributionsView(ImageView):
                     border=github_params.border,
                     dither_type=github_params.dither_type,
                     dither_kernel=github_params.dither_kernel,
+                    task_key=github_params.task_key,
+                    task_alias=github_params.task_alias,
                 )
                 super().execute(image_params)
             except Exception as img_error:

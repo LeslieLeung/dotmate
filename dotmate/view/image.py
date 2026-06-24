@@ -13,7 +13,7 @@ from dotmate.font import FontManager
 class ImageParams(BaseModel):
     image_data: bytes
     link: Optional[str] = None
-    border: Optional[int] = None
+    border: Optional[Literal[0, 1]] = None
     dither_type: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = None
     dither_kernel: Optional[Literal[
         "THRESHOLD",
@@ -27,6 +27,8 @@ class ImageParams(BaseModel):
         "DIFFUSION_COLUMN",
         "DIFFUSION_2D"
     ]] = None
+    task_key: Optional[str] = None
+    task_alias: Optional[Union[str, int]] = None
 
 
 class ImageView(BaseView):
@@ -248,6 +250,8 @@ class ImageView(BaseView):
             border=image_params.border,
             ditherType=image_params.dither_type,
             ditherKernel=image_params.dither_kernel,
+            taskKey=image_params.task_key,
+            taskAlias=image_params.task_alias,
         )
 
         try:

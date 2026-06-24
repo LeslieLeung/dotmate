@@ -16,6 +16,17 @@ class DemoClient:
         print(f"[Demo] Text message would be sent to {device_id}:")
         print(f"  Title: {payload.title}")
         print(f"  Message: {payload.message}")
+        print(f"  Signature: {payload.signature}")
+        if payload.icon:
+            print(f"  Icon: {payload.icon}")
+        if payload.link:
+            print(f"  Link: {payload.link}")
+        if payload.taskKey:
+            print(f"  Task Key: {payload.taskKey}")
+        if payload.taskAlias is not None:
+            print(f"  Task Alias: {payload.taskAlias}")
+        if payload.styles:
+            print(f"  Styles: {payload.styles.model_dump(exclude_none=True)}")
         return ApiResponse(message="Demo mode: text message not sent")
 
     def display_image(self, device_id: str, payload: DisplayImageRequest) -> ApiResponse:

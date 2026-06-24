@@ -3,25 +3,70 @@ import logging
 import threading
 import time
 from pydantic import BaseModel, Field
-from typing import Literal, Optional, List
+from typing import Literal, Optional, List, Union
 
 logger = logging.getLogger(__name__)
 
+TextFontFamily = Literal[
+    "ChillDuanSans",
+    "ChillKSans",
+    "ChillOrganic",
+    "ChillRoundF",
+    "ChillRoundGothic",
+    "Cusong16",
+    "DotGothic16",
+    "FusionPixel8",
+    "FusionPixel10",
+    "FusionPixel12",
+    "Liusong24",
+    "LogoSCUnboundedSans",
+    "MaokenYingBiKaiShuJ0.09",
+    "PlayfairDisplay",
+    "Quan8",
+    "Unifont16",
+    "UnifontExMono16",
+    "XiaoyaPixel12",
+    "Zihunzhoukesong",
+    "Zpix12",
+]
+TextFontWeight = Literal[100, 200, 300, 400, 500, 600, 700, 800, 900]
+
+
+class TextStyle(BaseModel):
+    fontFamily: Optional[TextFontFamily] = Field(None, description="文本字体")
+    fontSize: Optional[float] = Field(None, description="字号")
+    fontWeight: Optional[TextFontWeight] = Field(None, description="字重")
+
+
+class MessageTextStyle(TextStyle):
+    lineHeight: Optional[float] = Field(None, description="消息正文行高")
+
+
+class TextStyles(BaseModel):
+    title: Optional[TextStyle] = Field(None, description="标题样式")
+    message: Optional[MessageTextStyle] = Field(None, description="正文样式")
+    signature: Optional[TextStyle] = Field(None, description="签名样式")
+
+
 class DisplayTextRequest(BaseModel):
-    refreshNow: bool = Field(..., description="是否立刻显示内容")
+    refreshNow: bool = Field(True, description="是否立刻显示内容")
     title: Optional[str] = Field(None, description="标题")
-    message: str = Field(..., description="内容")
+    message: Optional[str] = Field(None, description="内容，支持 \\n 换行和 \\t 制表符")
     signature: Optional[str] = Field(None, description="签名")
-    icon: Optional[str] = Field(None, description="base64 编码 PNG 图标数据")
+    icon: Optional[str] = Field(None, description="PNG Base64 图标数据或可匿名访问的 http(s) 图片 URL")
     link: Optional[str] = Field(None, description="碰一碰跳转链接")
     taskKey: Optional[str] = Field(None, description="指定更新哪个 Text API 内容")
+    taskAlias: Optional[Union[str, int]] = Field(None, description="Text API 内容别名")
+    styles: Optional[TextStyles] = Field(None, description="标题、正文和签名的字体样式")
 
 
 class DisplayImageRequest(BaseModel):
     refreshNow: bool = Field(..., description="是否立刻显示内容")
-    image: str = Field(..., description="base64 编码 PNG 图像数据")
+    image: str = Field(..., description="PNG Base64 图像数据或可匿名访问的 http(s) 图片 URL")
     link: Optional[str] = Field(None, description="碰一碰跳转链接")
-    border: Optional[int] = Field(None, description="屏幕边缘的颜色编号")
+    border: Optional[Literal[0, 1]] = Field(
+        None, description="屏幕边框颜色：0 为白色，1 为黑色"
+    )
     ditherType: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = Field(
         None, description="抖动类型"
     )
@@ -40,6 +85,7 @@ class DisplayImageRequest(BaseModel):
         ]
     ] = Field(None, description="抖动算法")
     taskKey: Optional[str] = Field(None, description="指定更新哪个 Image API 内容")
+    taskAlias: Optional[Union[str, int]] = Field(None, description="Image API 内容别名")
 
 class ApiResponse(BaseModel):
     message: str
@@ -62,10 +108,12 @@ class DeviceTask(BaseModel):
     signature: Optional[str] = None
     icon: Optional[str] = None
     link: Optional[str] = None
+    styles: Optional[TextStyles] = None
     image: Optional[str] = None
-    border: Optional[int] = None
+    border: Optional[Literal[0, 1]] = None
     ditherType: Optional[str] = None
     ditherKernel: Optional[str] = None
+    taskAlias: Optional[Union[str, int]] = None
 
 
 class DotClient:

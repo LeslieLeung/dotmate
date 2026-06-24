@@ -151,6 +151,12 @@ devices:
 #     text 类型参数：
 #       - title: 消息标题（可选）
 #       - message: 消息内容（必填）
+#       - signature: 签名（可选，默认当前时间）
+#       - icon: PNG Base64 图标数据或可匿名访问的 http(s) 图片 URL（可选）
+#       - link: 点击链接（可选）
+#       - task_key: Text API 任务 key（可选）
+#       - task_alias: Text API 任务别名（可选）
+#       - styles: Dot. Text API 字体样式对象（可选）
 #
 #     work 类型参数：
 #       - clock_in: 上班时间，格式 "HH:MM"（可选，默认 "09:00"）
@@ -161,14 +167,18 @@ devices:
 #       - wakatime_api_key: Wakatime API 密钥（必填）
 #       - wakatime_user_id: Wakatime 用户 ID（必填）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选，数字）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选，DIFFUSION/ORDERED/NONE）
 #       - dither_kernel: 抖动内核（可选）
 #
 #     image 类型参数：
 #       - image_data: 图像二进制数据（必填）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）
 #
@@ -176,7 +186,9 @@ devices:
 #       - main_title: 主标题（必填）
 #       - sub_title: 副标题（可选）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）
 #
@@ -186,7 +198,9 @@ devices:
 #       - umami_api_key: Umami API 密钥（必填）
 #       - umami_time_range: 时间范围（可选，默认 "24h"，支持 7d、24h、30d 等）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）
 #
@@ -194,7 +208,9 @@ devices:
 #       - github_username: GitHub 用户名（必填）
 #       - github_token: GitHub Personal Access Token（必填）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）
 #
@@ -204,6 +220,8 @@ devices:
 #       - api_username: Basic Auth 用户名（可选）
 #       - api_password: Basic Auth 密码（可选）
 #       - link: 点击链接（可选）
-#       - border: 边框颜色（可选）
+#       - border: 边框颜色（可选，0=白色，1=黑色）
+#       - task_key: Image API 任务 key（可选）
+#       - task_alias: Image API 任务别名（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）

@@ -8,7 +8,7 @@ class TitleImageParams(BaseModel):
     main_title: str
     sub_title: Optional[str] = None
     link: Optional[str] = None
-    border: Optional[int] = None
+    border: Optional[Literal[0, 1]] = None
     dither_type: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = "NONE"
     dither_kernel: Optional[Literal[
         "THRESHOLD",
@@ -22,6 +22,8 @@ class TitleImageParams(BaseModel):
         "DIFFUSION_COLUMN",
         "DIFFUSION_2D"
     ]] = None
+    task_key: Optional[str] = None
+    task_alias: Optional[Union[str, int]] = None
 
 
 class TitleImageView(ImageView):
@@ -245,6 +247,8 @@ class TitleImageView(ImageView):
             border=title_params.border,
             dither_type=title_params.dither_type,
             dither_kernel=title_params.dither_kernel,
+            task_key=title_params.task_key,
+            task_alias=title_params.task_alias,
         )
 
         # Use parent's execute method

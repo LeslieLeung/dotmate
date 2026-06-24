@@ -1,13 +1,19 @@
 from datetime import datetime
-from typing import Optional, Type
+from typing import Optional, Type, Union
 from pydantic import BaseModel
-from dotmate.api.api import DotClient, DisplayTextRequest
+from dotmate.api.api import DotClient, DisplayTextRequest, TextStyles
 from dotmate.view.base import BaseView
 
 
 class TextParams(BaseModel):
     message: str
     title: Optional[str] = None
+    signature: Optional[str] = None
+    icon: Optional[str] = None
+    link: Optional[str] = None
+    task_key: Optional[str] = None
+    task_alias: Optional[Union[str, int]] = None
+    styles: Optional[TextStyles] = None
 
 
 class TextView(BaseView):
@@ -26,9 +32,12 @@ class TextView(BaseView):
             refreshNow=True,
             title=text_params.title,
             message=text_params.message,
-            signature=datetime.now().strftime("%H:%M"),
-            icon=None,
-            link=None,
+            signature=text_params.signature or datetime.now().strftime("%H:%M"),
+            icon=text_params.icon,
+            link=text_params.link,
+            taskKey=text_params.task_key,
+            taskAlias=text_params.task_alias,
+            styles=text_params.styles,
         )
 
         try:

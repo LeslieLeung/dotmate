@@ -70,7 +70,7 @@ def signal_handler(signum, frame):
 def generate_demo(scenario: str, config_path: str = "config.yaml", output_dir: str = "demos", **params):
     """Generate demo PNG image for a specific scenario without sending to device."""
     try:
-        config = load_config(config_path)
+        load_config(config_path)
     except FileNotFoundError:
         print(f"Config file not found: {config_path}")
         sys.exit(1)
@@ -227,7 +227,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Daemon command (default)
-    daemon_parser = subparsers.add_parser("daemon", help="Start the daemon (default)")
+    subparsers.add_parser("daemon", help="Start the daemon (default)")
 
     # Force push command
     push_parser = subparsers.add_parser("push", help="Force push update to device")
@@ -238,6 +238,8 @@ def main():
     )
     push_parser.add_argument("--message", help="Message for text scenario")
     push_parser.add_argument("--title", help="Title for text scenario")
+    push_parser.add_argument("--signature", help="Signature for text scenario")
+    push_parser.add_argument("--icon", help="PNG Base64 icon data or http(s) icon URL for text scenario")
     push_parser.add_argument("--clock-in", help="Clock in time for work scenario")
     push_parser.add_argument("--clock-out", help="Clock out time for work scenario")
     push_parser.add_argument(
@@ -287,7 +289,10 @@ def main():
     )
     push_parser.add_argument("--link", help="Optional link for image scenarios")
     push_parser.add_argument(
-        "--border", type=int, help="Optional border color for image scenarios"
+        "--border",
+        type=int,
+        choices=[0, 1],
+        help="Optional border color for image scenarios (0=white, 1=black)",
     )
     push_parser.add_argument(
         "--dither-type",
@@ -310,6 +315,14 @@ def main():
         ],
         help="Dither kernel for image scenarios",
     )
+    push_parser.add_argument(
+        "--task-key",
+        help="Optional Image API task key when multiple Image API contents exist",
+    )
+    push_parser.add_argument(
+        "--task-alias",
+        help="Optional Image API task alias when multiple Image API contents exist",
+    )
 
     # Demo command - generate PNG without sending to device
     demo_parser = subparsers.add_parser("demo", help="Generate demo PNG image without sending to device")
@@ -320,6 +333,8 @@ def main():
     demo_parser.add_argument("--output", "-o", default="demos", help="Output directory for demo images (default: demos)")
     demo_parser.add_argument("--message", help="Message for text scenario")
     demo_parser.add_argument("--title", help="Title for text scenario")
+    demo_parser.add_argument("--signature", help="Signature for text scenario")
+    demo_parser.add_argument("--icon", help="PNG Base64 icon data or http(s) icon URL for text scenario")
     demo_parser.add_argument("--clock-in", help="Clock in time for work scenario")
     demo_parser.add_argument("--clock-out", help="Clock out time for work scenario")
     demo_parser.add_argument(
@@ -369,7 +384,10 @@ def main():
     )
     demo_parser.add_argument("--link", help="Optional link for image scenarios")
     demo_parser.add_argument(
-        "--border", type=int, help="Optional border color for image scenarios"
+        "--border",
+        type=int,
+        choices=[0, 1],
+        help="Optional border color for image scenarios (0=white, 1=black)",
     )
     demo_parser.add_argument(
         "--dither-type",
@@ -392,6 +410,14 @@ def main():
         ],
         help="Dither kernel for image scenarios",
     )
+    demo_parser.add_argument(
+        "--task-key",
+        help="Optional Image API task key when multiple Image API contents exist",
+    )
+    demo_parser.add_argument(
+        "--task-alias",
+        help="Optional Image API task alias when multiple Image API contents exist",
+    )
 
     args = parser.parse_args()
 
@@ -402,6 +428,10 @@ def main():
             push_params['message'] = args.message
         if args.title:
             push_params['title'] = args.title
+        if args.signature:
+            push_params["signature"] = args.signature
+        if args.icon:
+            push_params["icon"] = args.icon
         if args.clock_in:
             push_params['clock_in'] = args.clock_in
         if args.clock_out:
@@ -440,12 +470,16 @@ def main():
             push_params["api_password"] = args.api_password
         if args.link:
             push_params["link"] = args.link
-        if args.border:
+        if args.border is not None:
             push_params["border"] = args.border
         if args.dither_type:
             push_params["dither_type"] = args.dither_type
         if args.dither_kernel:
             push_params["dither_kernel"] = args.dither_kernel
+        if args.task_key:
+            push_params["task_key"] = args.task_key
+        if args.task_alias:
+            push_params["task_alias"] = args.task_alias
 
         force_push(args.device, args.scenario, args.config, **push_params)
     elif args.command == "demo":
@@ -455,6 +489,10 @@ def main():
             demo_params['message'] = args.message
         if args.title:
             demo_params['title'] = args.title
+        if args.signature:
+            demo_params["signature"] = args.signature
+        if args.icon:
+            demo_params["icon"] = args.icon
         if args.clock_in:
             demo_params['clock_in'] = args.clock_in
         if args.clock_out:
@@ -493,12 +531,16 @@ def main():
             demo_params["api_password"] = args.api_password
         if args.link:
             demo_params["link"] = args.link
-        if args.border:
+        if args.border is not None:
             demo_params["border"] = args.border
         if args.dither_type:
             demo_params["dither_type"] = args.dither_type
         if args.dither_kernel:
             demo_params["dither_kernel"] = args.dither_kernel
+        if args.task_key:
+            demo_params["task_key"] = args.task_key
+        if args.task_alias:
+            demo_params["task_alias"] = args.task_alias
 
         generate_demo(args.scenario, args.config, args.output, **demo_params)
     else:

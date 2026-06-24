@@ -78,7 +78,9 @@ class MyCustomParams(BaseModel):
 
     # 如果是图像类型，添加图像相关参数
     link: Optional[str] = None
-    border: Optional[int] = None
+    border: Optional[Literal[0, 1]] = None
+    task_key: Optional[str] = None
+    task_alias: Optional[Union[str, int]] = None
     dither_type: Optional[Literal["DIFFUSION", "ORDERED", "NONE"]] = "NONE"
     dither_kernel: Optional[Literal[
         "THRESHOLD", "ATKINSON", "BURKES", "FLOYD_STEINBERG",

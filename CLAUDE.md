@@ -39,7 +39,9 @@ python main.py push mydevice code_plan_usage --api-url "http://your.onwatch.site
 
 # Additional image options:
 # --link "https://example.com"
-# --border <color_number>
+# --border <0|1>
+# --task-key <image_api_task_key>
+# --task-alias <image_api_task_alias>
 # --dither-type "DIFFUSION|ORDERED|NONE"
 # --dither-kernel "FLOYD_STEINBERG|ATKINSON|BURKES|..." (many options available)
 

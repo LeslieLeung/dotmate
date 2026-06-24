@@ -129,7 +129,7 @@ python main.py
 ##### 手动发送消息
 ```bash
 # 发送文本消息
-python main.py push mydevice text --message "Hello World" --title "通知"
+python main.py push mydevice text --message "Hello World" --title "通知" --signature "12:30"
 
 # 发送工作倒计时（生成图片）
 python main.py push mydevice work --clock-in "09:00" --clock-out "18:00"
@@ -185,7 +185,17 @@ python main.py demo title_image --main-title "测试" --output "./my-demos"
 ## 消息类型
 
 ### 文本消息 (text)
-发送自定义文本消息，支持标题和内容。
+发送自定义文本消息，支持标题、内容、签名、图标、跳转链接和多 Text API 内容选择。
+
+支持以下参数：
+- `title`: 消息标题（可选）
+- `message`: 消息内容（必填，支持 `\n` 换行和 `\t` 制表符）
+- `signature`: 签名（可选，默认使用当前时间）
+- `icon`: 可选，PNG Base64 图标数据或可匿名访问的 http(s) 图片 URL
+- `link`: 可选的跳转链接
+- `task_key`: 可选，指定要更新的 Text API 内容
+- `task_alias`: 可选，按别名指定要更新的 Text API 内容
+- `styles`: 可选，配置文件中可传 Dot. Text API 的 `styles` 对象
 
 ### 工作倒计时 (work)
 显示距离下班还有多长时间，支持自定义上班和下班时间。现在以图片形式显示，支持中文字体渲染。
@@ -196,7 +206,9 @@ python main.py demo title_image --main-title "测试" --output "./my-demos"
 发送 PNG 格式的图片文件到设备。支持以下参数：
 - `image_path`: 图片文件路径
 - `link`: 可选的跳转链接
-- `border`: 可选的边框颜色（0-255 的整数值）
+- `border`: 可选的边框颜色（`0` 为白色，`1` 为黑色）
+- `task_key`: 可选，指定要更新的 Image API 内容
+- `task_alias`: 可选，按别名指定要更新的 Image API 内容
 - `dither_type`: 抖动类型，可选值：
   - `DIFFUSION`: 扩散抖动（默认）
   - `ORDERED`: 有序抖动
