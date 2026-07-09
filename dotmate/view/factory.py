@@ -1,5 +1,7 @@
-from typing import Dict, Type, Any
-from dotmate.api.api import DotClient
+from typing import Dict, Type, Any, Optional
+from pydantic import BaseModel
+
+from dotmate.platforms.base import PlatformProfile
 from dotmate.view.base import BaseView
 from dotmate.view.work import WorkView
 from dotmate.view.text import TextView
@@ -26,13 +28,34 @@ class ViewFactory:
     }
 
     @classmethod
-    def create_view(cls, view_type: str, client: DotClient, device_id: str) -> BaseView:
-        """Create a view handler for the given type."""
+    def create_view(
+        cls,
+        view_type: str,
+        client,
+        device_id: str,
+        profile: Optional[PlatformProfile] = None,
+    ) -> BaseView:
+        """Create a view handler for the given type.
+
+        Args:
+            view_type: Registered view type name.
+            client: Platform client.
+            device_id: Target device identifier.
+            profile: Optional device profile carrying resolution + capabilities.
+                Image views derive their canvas size from it; defaults to
+                Quote/0 (296x152) when omitted.
+        """
         if view_type not in cls._view_registry:
             raise ValueError(f"Unknown view type: {view_type}")
 
         view_class = cls._view_registry[view_type]
-        return view_class(client, device_id)
+
+        if issubclass(view_class, ImageView):
+            view = view_class(client, device_id, profile=profile)
+        else:
+            view = view_class(client, device_id)
+
+        return view
 
     @classmethod
     def register_view(cls, view_type: str, view_class: Type[BaseView]) -> None:
@@ -40,14 +63,37 @@ class ViewFactory:
         cls._view_registry[view_type] = view_class
 
     @classmethod
+    def is_registered(cls, view_type: str) -> bool:
+        """Return True if ``view_type`` is a known view type."""
+        return view_type in cls._view_registry
+
+    @classmethod
     def get_available_types(cls) -> list[str]:
         """Get list of available view types."""
         return list(cls._view_registry.keys())
 
     @classmethod
-    def execute_view(cls, view_type: str, client: DotClient, device_id: str, params: Any, overlay_settings: dict = None) -> None:
-        """Create and execute a view in one call."""
-        view = cls.create_view(view_type, client, device_id)
+    def requires_text(cls, view_type: str) -> bool:
+        """Return whether a registered view needs the text display capability."""
+        view_class = cls._view_registry[view_type]
+        return getattr(view_class, "requires_text", False)
+
+    @classmethod
+    def execute_view(
+        cls,
+        view_type: str,
+        client,
+        device_id: str,
+        params: Any,
+        overlay_settings: Optional[dict] = None,
+        profile: Optional[PlatformProfile] = None,
+    ) -> None:
+        """Create and execute a view in one call.
+
+        ``profile`` drives both the resolved display size and (for image views)
+        the resolution-adaptive layout. Defaults to Quote/0 when omitted.
+        """
+        view = cls.create_view(view_type, client, device_id, profile=profile)
 
         if overlay_settings and isinstance(view, ImageView):
             view.show_battery_icon = overlay_settings.get("show_battery_icon", False)
@@ -63,7 +109,7 @@ class ViewFactory:
         view.execute(params_obj)
 
     @classmethod
-    def get_params_class(cls, view_type: str):
+    def get_params_class(cls, view_type: str) -> Type[BaseModel]:
         """Get the params class for a specific view type."""
         if view_type not in cls._view_registry:
             raise ValueError(f"Unknown view type: {view_type}")

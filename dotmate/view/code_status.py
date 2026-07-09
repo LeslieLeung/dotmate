@@ -30,13 +30,14 @@ class CodeStatusParams(BaseModel):
     ] = None
     task_key: Optional[str] = None
     task_alias: Optional[Union[str, int]] = None
+    page_id: Optional[Union[str, int]] = None
 
 
 class CodeStatusView(ImageView):
     """View handler for displaying Wakatime coding status as an image."""
 
-    def __init__(self, client, device_id: str):
-        super().__init__(client, device_id)
+    def __init__(self, client, device_id: str, profile=None):
+        super().__init__(client, device_id, profile=profile)
         self.custom_font_name = "Hack-Bold"
 
     @classmethod
@@ -103,10 +104,10 @@ class CodeStatusView(ImageView):
             else:
                 lines = ["Today's Coding", "No coding time", "tracked today"]
 
-            # Font sizes (scaled for supersampling)
-            title_font_size = self._s(22)
-            content_font_size = self._s(16)
-            small_font_size = self._s(14)
+            # Font sizes (scaled for supersampling + resolution)
+            title_font_size = self._sz(22)
+            content_font_size = self._sz(16)
+            small_font_size = self._sz(14)
 
             # Get fonts (use custom font if set)
             title_font = self._get_font(title_font_size)
@@ -114,9 +115,9 @@ class CodeStatusView(ImageView):
             small_font = self._get_font(small_font_size)
 
             # Calculate line heights (scaled)
-            title_line_height = self._s(28)
-            content_line_height = self._s(20)
-            small_line_height = self._s(18)
+            title_line_height = self._sz(28)
+            content_line_height = self._sz(20)
+            small_line_height = self._sz(18)
 
             # Calculate total height dynamically
             total_height = title_line_height
@@ -127,7 +128,7 @@ class CodeStatusView(ImageView):
                     total_height += content_line_height
 
             # Start position (centered vertically)
-            start_y = max((height - total_height) // 2, self._s(8))
+            start_y = max((height - total_height) // 2, self._sz(8))
 
             # Draw title (first line)
             title_text = lines[0]
@@ -155,11 +156,11 @@ class CodeStatusView(ImageView):
 
             # Add timestamp at bottom right
             timestamp = datetime.now().strftime("%H:%M")
-            timestamp_font = self._get_font(self._s(12))
+            timestamp_font = self._get_font(self._sz(12))
             bbox = draw.textbbox((0, 0), timestamp, font=timestamp_font)
             timestamp_width = bbox[2] - bbox[0]
             draw.text(
-                (width - timestamp_width - self._s(8), height - self._s(16)),
+                (width - timestamp_width - self._sz(8), height - self._sz(16)),
                 timestamp,
                 fill=0,
                 font=timestamp_font,
@@ -190,6 +191,7 @@ class CodeStatusView(ImageView):
                 dither_kernel=status_params.dither_kernel,
                 task_key=status_params.task_key,
                 task_alias=status_params.task_alias,
+                page_id=status_params.page_id,
             )
 
             # Use parent's execute method
@@ -209,6 +211,7 @@ class CodeStatusView(ImageView):
                     dither_kernel=status_params.dither_kernel,
                     task_key=status_params.task_key,
                     task_alias=status_params.task_alias,
+                    page_id=status_params.page_id,
                 )
                 super().execute(image_params)
             except Exception as img_error:

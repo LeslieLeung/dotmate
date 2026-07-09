@@ -1,11 +1,12 @@
 # Dotmate
 
-Dotmate 是一个用于管理[Quote/0](https://dot.mindreset.tech/product/quote)消息推送的调度器，支持通过定时任务向设备发送各种类型的消息。
+Dotmate 是一个用于管理墨水屏消息推送的调度器，支持 [Quote/0](https://dot.mindreset.tech/product/quote)（296×152）与 [Zectrix Note 4](https://www.zectrix.com/note4.html)（400×300），可通过定时任务向设备发送各种类型的消息。Note 4 仅通过图片 API 推送。
 
 ## 功能特性
 
 - 🕐 **定时任务调度**：基于 Cron 表达式的定时任务系统
 - 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态、图片消息、标题图片生成和 Umami 统计等多种消息类型
+- 📱 **多设备型号**：Quote/0 与 Zectrix Note 4，按设备类型自动选择分辨率与 API
 - 🎯 **多设备管理**：支持管理多个设备，每个设备可配置独立的任务调度
 - 🔧 **灵活配置**：使用 YAML 配置文件管理设备和任务
 - 🚀 **即时推送**：支持手动触发消息推送
@@ -295,19 +296,51 @@ devices:
 
 ## 配置说明
 
-配置文件使用 YAML 格式，主要包含：
+配置文件使用 YAML 格式，按平台（厂商）分组配置：
 
-- `api_key`: API 密钥
+- `platforms`: 按厂商分组的平台配置
+  - `quote0.api_key`: Quote/0 平台 API 密钥（有 quote0 设备时必填）
+  - `zectrix.api_key`: Zectrix Note 4 平台 API 密钥（`zt_...`，有 zectrix 设备时必填）
 - `devices`: 设备列表
   - `name`: 设备名称
-  - `device_id`: 设备唯一标识符
-  - `show_battery_icon`: 在图像右下角显示电池图标（可选，默认 `false`）
+  - `device_id`: 设备唯一标识符（Note 4 为 MAC 地址，如 `AA:BB:CC:DD:EE:FF`）
+  - `platform`: 设备所属平台，`quote0`（默认，296×152，支持文本+图片）或 `zectrix`（400×300，仅图片）
+  - `api_key`: 设备级 API 密钥覆盖（可选，覆盖 `platforms.<name>.api_key`）
+  - `show_battery_icon`: 在图像右下角显示电池图标（可选，默认 `false`；Note 4 无状态接口）
   - `show_battery_percentage`: 在图像右下角显示电量百分比（可选，默认 `false`）
   - `show_refresh_time`: 在图像右下角显示刷新时间（可选，默认 `false`）
   - `schedules`: 定时任务列表
     - `cron`: Cron 表达式
     - `type`: 消息类型
-    - `params`: 消息参数（可选）
+    - `params`: 消息参数（可选；Note 4 可用 `page_id: "1"` 指定页面 1–5）
+
+> 注：在仅图片平台（如 `zectrix`）上配置 `text` 任务会在加载时报错。
+
+### Zectrix Note 4 示例
+
+```yaml
+platforms:
+  zectrix:
+    api_key: "zt_your_key"
+devices:
+  - name: "Note4"
+    device_id: "AA:BB:CC:DD:EE:FF"
+    platform: zectrix
+    schedules:
+      - cron: "*/15 * * * *"
+        type: title_image
+        params:
+          main_title: "Hello"
+          sub_title: "Note 4"
+          dither_type: "NONE"
+          page_id: "1"
+```
+
+本地预览 Note 4 分辨率（400×300）demo：
+
+```bash
+python main.py demo title_image --platform zectrix --main-title "测试" --sub-title "400x300"
+```
 
 ### Cron 表达式示例
 

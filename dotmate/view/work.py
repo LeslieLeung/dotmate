@@ -1,5 +1,5 @@
 from datetime import datetime, time
-from typing import Type
+from typing import Type, Optional, Union
 from pydantic import BaseModel
 from dotmate.view.title_image import TitleImageView, TitleImageParams
 
@@ -7,13 +7,14 @@ from dotmate.view.title_image import TitleImageView, TitleImageParams
 class WorkParams(BaseModel):
     clock_in: str
     clock_out: str
+    page_id: Optional[Union[str, int]] = None
 
 
 class WorkView(TitleImageView):
     """View handler for work countdown messages."""
 
-    def __init__(self, client, device_id: str):
-        super().__init__(client, device_id)
+    def __init__(self, client, device_id: str, profile=None):
+        super().__init__(client, device_id, profile=profile)
         self.custom_font_name = "SourceHanSansSC-VF"  # Use SourceHanSans font
         self.font_weight = 600  # SemiBold weight for better readability
 
@@ -75,6 +76,7 @@ class WorkView(TitleImageView):
             border=None,
             dither_type="NONE",
             dither_kernel=None,
+            page_id=work_params.page_id,
         )
 
         # Use parent's execute method to generate and send image
