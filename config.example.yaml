@@ -1,17 +1,26 @@
 # Dotmate 配置文件示例
 # 复制此文件为 config.yaml 并填入你的实际配置
 
-# API 密钥 - 从你的服务提供商获取
-api_key: "your-api-key-here"
+# 平台配置：按厂商分组，每个平台有自己的 api_key
+platforms:
+  # Quote/0 平台（dot.mindreset.tech，分辨率 296x152，支持文本+图片）
+  quote0:
+    api_key: "your-quote0-api-key-here"
+
+  # Zectrix Note 4 平台（cloud.zectrix.com，分辨率 400x300，仅图片）
+  # 格式 zt_...；获取地址：https://cloud.zectrix.com/home/api-keys
+  zectrix:
+    api_key: "zt_your-zectrix-api-key-here"
 
 # 请求间隔（秒），防止短时间内发送过多 API 请求（可选，默认 1.0）
 request_interval: 1.0
 
 # 设备列表
 devices:
-  # 设备示例 1：办公室设备，包含多种消息类型
+  # 设备示例 1：办公室设备（Quote/0，默认 platform=quote0，分辨率 296x152）
   - name: "办公室设备"
     device_id: "office-device-001"
+    platform: quote0  # 可选，默认 quote0
     # 在图像右下角显示电池和刷新时间（仅对图像类型生效）
     show_battery_icon: true
     show_battery_percentage: true
@@ -49,6 +58,7 @@ devices:
   # 设备示例 2：家用设备，仅文本消息
   - name: "家用设备"
     device_id: "home-device-001"
+    platform: quote0
     schedules:
       # 每天早上8点发送天气提醒
       - cron: "0 8 * * *"
@@ -64,9 +74,35 @@ devices:
           title: "睡眠提醒"
           message: "该准备休息了，晚安！"
 
-  # 设备示例 3：开发环境设备，代码状态监控
+  # 设备示例 3：Zectrix Note 4（分辨率 400x300，仅走图片 API）
+  # 需配置 platforms.zectrix.api_key；device_id 为设备 MAC 地址
+  # 注意：note4 平台不支持 text 类型，配置 text 任务会在加载时报错
+  - name: "Note4 便利贴"
+    device_id: "AA:BB:CC:DD:EE:FF"
+    platform: zectrix
+    # 也可在设备级覆盖密钥：api_key: "zt_xxx"
+    schedules:
+      # 每 15 分钟推送标题图（布局会按 400x300 自适应）
+      - cron: "*/15 * * * *"
+        type: title_image
+        params:
+          main_title: "Note 4"
+          sub_title: "Hello Zectrix"
+          dither_type: "NONE"
+          page_id: "1"
+
+      # 工作日倒计时
+      - cron: "*/10 9-18 * * 1-5"
+        type: work
+        params:
+          clock_in: "09:00"
+          clock_out: "18:00"
+          page_id: "1"
+
+  # 设备示例 4：开发环境设备，代码状态监控
   - name: "开发环境"
     device_id: "dev-device-001"
+    platform: quote0
     schedules:
       # 每2分钟检查代码状态
       - cron: "*/2 * * * *"
@@ -116,13 +152,22 @@ devices:
 
 # 配置说明：
 #
-# api_key:
-#   - 必填项，从你的服务提供商获取的 API 密钥
+# platforms:                   按厂商分组的平台配置
+#   <platform_name>:
+#     api_key:                 该平台的 API 密钥
+#       - quote0: Quote/0 平台密钥（dot.mindreset.tech）
+#       - zectrix: Zectrix Note 4 密钥（zt_...，cloud.zectrix.com）
 #
 # devices:
 #   - name: 设备的友好名称，用于识别和命令行操作
-#   - device_id: 设备的唯一标识符，通常由服务提供商分配
-#   - show_battery_icon: 在图像右下角显示电池图标（可选，默认 false）
+#   - device_id: 设备唯一标识符
+#       * quote0: 服务商分配的设备 ID
+#       * zectrix: 设备 MAC 地址，格式 AA:BB:CC:DD:EE:FF
+#   - platform: 设备所属平台（可选，默认 quote0）
+#       * quote0: Quote/0，分辨率 296x152，支持文本+图片
+#       * zectrix: Zectrix Note 4，分辨率 400x300，仅图片（不支持 text 任务）
+#   - api_key: 设备级 API 密钥覆盖（可选，覆盖 platforms.<name>.api_key）
+#   - show_battery_icon: 在图像右下角显示电池图标（可选，默认 false；Note 4 无状态接口）
 #   - show_battery_percentage: 在图像右下角显示电量百分比（可选，默认 false）
 #   - show_refresh_time: 在图像右下角显示刷新时间（可选，默认 false）
 #   - schedules: 该设备的定时任务列表
@@ -137,7 +182,7 @@ devices:
 #       "*/30 9-17 * * 1-5" - 工作日工作时间内每30分钟
 #
 #   - type: 消息类型，支持以下类型：
-#     * text: 文本消息
+#     * text: 文本消息（仅 quote0 平台支持）
 #     * work: 工作倒计时
 #     * code_status: 代码状态监控
 #     * image: 图像显示
@@ -175,12 +220,13 @@ devices:
 #
 #     image 类型参数：
 #       - image_data: 图像二进制数据（必填）
-#       - link: 点击链接（可选）
-#       - border: 边框颜色（可选，0=白色，1=黑色）
-#       - task_key: Image API 任务 key（可选）
-#       - task_alias: Image API 任务别名（可选）
-#       - dither_type: 抖动类型（可选）
-#       - dither_kernel: 抖动内核（可选）
+#       - link: 点击链接（可选，Quote/0）
+#       - border: 边框颜色（可选，0=白色，1=黑色，Quote/0）
+#       - task_key: Image API 任务 key（可选，Quote/0）
+#       - task_alias: Image API 任务别名（可选，Quote/0）
+#       - page_id: Note 4 页面编号 1-5（可选，持久化到设备页面）
+#       - dither_type: 抖动类型（可选；Note 4 上 NONE=关闭抖动，其他=开启）
+#       - dither_kernel: 抖动内核（可选，Quote/0）
 #
 #     title_image 类型参数：
 #       - main_title: 主标题（必填）
@@ -189,6 +235,7 @@ devices:
 #       - border: 边框颜色（可选，0=白色，1=黑色）
 #       - task_key: Image API 任务 key（可选）
 #       - task_alias: Image API 任务别名（可选）
+#       - page_id: Note 4 页面编号 1-5（可选）
 #       - dither_type: 抖动类型（可选）
 #       - dither_kernel: 抖动内核（可选）
 #

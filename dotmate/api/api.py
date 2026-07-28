@@ -1,9 +1,12 @@
+import base64
 import requests
 import logging
 import threading
 import time
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Any, Literal, Optional, List, Union
+
+from dotmate.platforms.base import ImagePayload, TextPayload
 
 logger = logging.getLogger(__name__)
 
@@ -334,8 +337,20 @@ class DotClient:
         return self.get_device_settings(device_id)
 
     def display_text(
-        self, device_id: str, payload: DisplayTextRequest
+        self, device_id: str, payload: Union[DisplayTextRequest, TextPayload]
     ) -> "ApiResponse":
+        if isinstance(payload, TextPayload):
+            payload = DisplayTextRequest(
+                refreshNow=payload.refresh_now,
+                title=payload.title,
+                message=payload.message,
+                signature=payload.signature,
+                icon=payload.icon,
+                link=payload.link,
+                taskKey=payload.task_key,
+                taskAlias=payload.task_alias,
+                styles=payload.styles,
+            )
         url = f"{self.base_url}/{device_id}/text"
         request_data = payload.model_dump(exclude_none=True)
         logger.info(f"Sending text display request to {url}")
@@ -346,8 +361,19 @@ class DotClient:
         return self._handle_response(response)
 
     def display_image(
-        self, device_id: str, payload: DisplayImageRequest
+        self, device_id: str, payload: Union[DisplayImageRequest, ImagePayload]
     ) -> "ApiResponse":
+        if isinstance(payload, ImagePayload):
+            payload = DisplayImageRequest(
+                refreshNow=payload.refresh_now,
+                image=base64.b64encode(payload.image_bytes).decode("utf-8"),
+                link=payload.link,
+                border=payload.border,
+                ditherType=payload.dither_type,
+                ditherKernel=payload.dither_kernel,
+                taskKey=payload.task_key,
+                taskAlias=payload.task_alias,
+            )
         url = f"{self.base_url}/{device_id}/image"
         request_data = payload.model_dump(exclude_none=True)
         log_data = {

@@ -8,6 +8,7 @@ from dotmate.api.api import (
     DeviceSleepSettings,
     DotClient,
 )
+from dotmate.platforms.base import ImagePayload, TextPayload
 
 
 class Response:
@@ -179,3 +180,45 @@ def test_list_device_content_accepts_vendor_image_reference_objects(monkeypatch)
     monkeypatch.setattr(client, "_rate_limited_request", request)
     tasks = client.list_device_content("device-1")
     assert tasks[0].image == {"key": "dot/user/example.png"}
+
+
+def test_legacy_web_client_accepts_platform_text_payload(monkeypatch):
+    client = DotClient("secret", request_interval=0)
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return Response({"message": "ok"})
+
+    monkeypatch.setattr(client, "_rate_limited_request", request)
+    client.display_text(
+        "device-1",
+        TextPayload(message="Hello", title="Title", task_alias="desk"),
+    )
+
+    assert calls[0][2]["json"]["refreshNow"] is True
+    assert calls[0][2]["json"]["message"] == "Hello"
+    assert calls[0][2]["json"]["taskAlias"] == "desk"
+
+
+def test_legacy_web_client_accepts_platform_image_payload(monkeypatch):
+    client = DotClient("secret", request_interval=0)
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return Response({"message": "ok"})
+
+    monkeypatch.setattr(client, "_rate_limited_request", request)
+    client.display_image(
+        "device-1",
+        ImagePayload(
+            image_bytes=b"png",
+            dither_type="NONE",
+            task_key="image-task",
+        ),
+    )
+
+    assert calls[0][2]["json"]["image"] == "cG5n"
+    assert calls[0][2]["json"]["ditherType"] == "NONE"
+    assert calls[0][2]["json"]["taskKey"] == "image-task"

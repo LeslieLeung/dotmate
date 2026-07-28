@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Type, Optional, Literal, Union
 import requests
 from pydantic import BaseModel
 from dotmate.view.image import ImageView, ImageParams
-from PIL import ImageDraw
 
 
 class GitHubContributionsParams(BaseModel):
@@ -28,13 +27,14 @@ class GitHubContributionsParams(BaseModel):
     ] = None
     task_key: Optional[str] = None
     task_alias: Optional[Union[str, int]] = None
+    page_id: Optional[Union[str, int]] = None
 
 
 class GitHubContributionsView(ImageView):
     """View handler for displaying GitHub user contributions as an image."""
 
-    def __init__(self, client, device_id: str):
-        super().__init__(client, device_id)
+    def __init__(self, client, device_id: str, profile=None):
+        super().__init__(client, device_id, profile=profile)
         self.custom_font_name = "Hack-Bold"
         self.enable_supersampling = False
 
@@ -111,7 +111,7 @@ class GitHubContributionsView(ImageView):
 
     def _draw_contribution_cell(self, draw, x, y, size, level):
         """Draw a single contribution cell with grayscale level for supersampled rendering."""
-        border = self._s(1)
+        border = self._sz(1)
         # Draw black border background
         draw.rectangle([x, y, x + size, y + size], fill=0)
         # Draw inner fill
@@ -159,46 +159,46 @@ class GitHubContributionsView(ImageView):
             weeks = contribution_calendar.get("weeks", [])
 
             # --- Top Section: User Info ---
-            top_section_height = self._s(60)
+            top_section_height = self._py(0.39)
 
             # Font sizes (scaled)
-            username_font_size = self._s(16)
-            stats_font_size = self._s(12)
+            username_font_size = self._sz(16)
+            stats_font_size = self._sz(12)
 
             username_font = self._get_font(username_font_size)
             stats_font = self._get_font(stats_font_size)
 
             # Draw username at top left
-            draw.text((self._s(10), self._s(8)), username, fill=0, font=username_font)
+            draw.text((self._sz(10), self._sz(8)), username, fill=0, font=username_font)
 
             # Draw stats below username
             followers_text = f"Followers: {self._format_number(followers)}"
             stars_text = f"Stars: {self._format_number(total_stars)}"
 
             draw.text(
-                (self._s(10), self._s(28)), followers_text, fill=0, font=stats_font
+                (self._sz(10), self._sz(28)), followers_text, fill=0, font=stats_font
             )
-            draw.text((self._s(10), self._s(44)), stars_text, fill=0, font=stats_font)
+            draw.text((self._sz(10), self._sz(44)), stars_text, fill=0, font=stats_font)
 
             # Draw separator line
             draw.line(
                 [(0, top_section_height), (width, top_section_height)],
                 fill=0,
-                width=self._s(1),
+                width=self._sz(1),
             )
 
             # --- Bottom Section: Contribution Grid ---
-            grid_top = top_section_height + self._s(8)
-            grid_bottom = height - self._s(5)
-            grid_left = self._s(5)
-            grid_right = width - self._s(5)
+            grid_top = top_section_height + self._sz(8)
+            grid_bottom = height - self._sz(5)
+            grid_left = self._sz(5)
+            grid_right = width - self._sz(5)
 
             # Available space
             available_width = grid_right - grid_left
             available_height = grid_bottom - grid_top
 
             # Gap between cells
-            gap = self._s(2)
+            gap = self._sz(2)
 
             # Calculate how many weeks we can display
             # Each week needs 7 rows (days), calculate cell size based on height
@@ -212,7 +212,7 @@ class GitHubContributionsView(ImageView):
 
             # Use the cell size calculated from height
             cell_size = max(
-                cell_size_from_height, self._s(4)
+                cell_size_from_height, self._sz(4)
             )  # Minimum 4 pixels (scaled)
 
             # Get the most recent weeks
@@ -244,8 +244,8 @@ class GitHubContributionsView(ImageView):
         image, draw = self._create_canvas()
         width, height = image.size
 
-        error_font = self._get_font(self._s(16))
-        small_font = self._get_font(self._s(12))
+        error_font = self._get_font(self._sz(16))
+        small_font = self._get_font(self._sz(12))
 
         # Draw error message
         error_text = "GitHub API Error"
@@ -253,20 +253,20 @@ class GitHubContributionsView(ImageView):
         text_width = bbox[2] - bbox[0]
         text_x = (width - text_width) // 2
 
-        draw.text((text_x, self._s(50)), error_text, fill=0, font=error_font)
+        draw.text((text_x, self._py(0.33)), error_text, fill=0, font=error_font)
 
         sub_text = "Check credentials"
         bbox = draw.textbbox((0, 0), sub_text, font=small_font)
         sub_width = bbox[2] - bbox[0]
         sub_x = (width - sub_width) // 2
 
-        draw.text((sub_x, self._s(80)), sub_text, fill=0, font=small_font)
+        draw.text((sub_x, self._py(0.53)), sub_text, fill=0, font=small_font)
 
         # Add timestamp
         timestamp = datetime.now().strftime("%H:%M")
-        timestamp_font = self._get_font(self._s(10))
+        timestamp_font = self._get_font(self._sz(10))
         draw.text(
-            (width - self._s(40), height - self._s(15)),
+            (width - self._sz(40), height - self._sz(15)),
             timestamp,
             fill=0,
             font=timestamp_font,
@@ -294,6 +294,7 @@ class GitHubContributionsView(ImageView):
                 dither_kernel=github_params.dither_kernel,
                 task_key=github_params.task_key,
                 task_alias=github_params.task_alias,
+                page_id=github_params.page_id,
             )
 
             # Use parent's execute method
@@ -312,6 +313,7 @@ class GitHubContributionsView(ImageView):
                     dither_kernel=github_params.dither_kernel,
                     task_key=github_params.task_key,
                     task_alias=github_params.task_alias,
+                    page_id=github_params.page_id,
                 )
                 super().execute(image_params)
             except Exception as img_error:
