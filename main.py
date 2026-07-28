@@ -1,7 +1,10 @@
 import argparse
+import ipaddress
 import logging
+import os
 import signal
 import sys
+from pathlib import Path
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotmate.config import load_config
@@ -219,6 +222,119 @@ def start_daemon(config_path: str = "config.yaml"):
         sys.exit(1)
 
 
+def _is_loopback_host(host: str) -> bool:
+    normalized = host.strip().strip("[]")
+    if normalized.casefold() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _validate_web_bind(host: str) -> None:
+    """Require authentication before exposing the admin server to a network."""
+    if not _is_loopback_host(host) and not os.environ.get("ADMIN_TOKEN"):
+        raise RuntimeError(
+            "ADMIN_TOKEN is required when binding the web admin outside localhost"
+        )
+
+
+def _frontend_dir() -> Path:
+    return Path(__file__).parent / "web" / "frontend"
+
+
+def _require_frontend_build() -> None:
+    if not (_frontend_dir() / "dist" / "index.html").is_file():
+        raise RuntimeError(
+            "Frontend build not found. Run 'make build-frontend' first, "
+            "or start production with 'make web'."
+        )
+
+
+def _vite_backend_url(host: str, port: int) -> str:
+    proxy_host = host.strip().strip("[]")
+    if proxy_host == "0.0.0.0":
+        proxy_host = "127.0.0.1"
+    elif proxy_host == "::":
+        proxy_host = "::1"
+    if ":" in proxy_host:
+        proxy_host = f"[{proxy_host}]"
+    return f"http://{proxy_host}:{port}"
+
+
+def start_web(host: str = "127.0.0.1", port: int = 8000):
+    """Start the web admin panel with FastAPI + background scheduler."""
+    _validate_web_bind(host)
+    _require_frontend_build()
+
+    import uvicorn
+    from web.backend.db import init_db
+    from web.backend.scheduler import start_scheduler, stop_scheduler
+    from web.backend.status_worker import start_status_worker, stop_status_worker
+
+    print("Starting dotmate web admin...")
+    init_db()
+    start_scheduler()
+    start_status_worker()
+    print(f"Web admin available at http://{host}:{port}")
+
+    try:
+        uvicorn.run("web.backend.app:app", host=host, port=port, log_level="info")
+    finally:
+        stop_status_worker()
+        stop_scheduler()
+
+
+def start_dev(host: str = "127.0.0.1", port: int = 8000):
+    """Start both backend and frontend dev servers for development."""
+    _validate_web_bind(host)
+
+    import subprocess
+    import time
+    import uvicorn
+    from web.backend.db import init_db
+    from web.backend.scheduler import start_scheduler, stop_scheduler
+    from web.backend.status_worker import start_status_worker, stop_status_worker
+
+    print("Starting Dotmate in development mode...")
+    print(f"  Backend API: http://localhost:{port}")
+    print("  Frontend:    http://localhost:5173")
+    print()
+
+    # Initialize DB and scheduler
+    init_db()
+    start_scheduler()
+    start_status_worker()
+
+    # Start Vite dev server in background
+    frontend_dir = _frontend_dir()
+    vite_env = os.environ.copy()
+    vite_env["DOTMATE_BACKEND_URL"] = _vite_backend_url(host, port)
+    vite_process = subprocess.Popen(
+        ["npm", "run", "dev"],
+        cwd=frontend_dir,
+        env=vite_env,
+    )
+
+    # Give Vite a moment to start
+    time.sleep(2)
+    print(f"Frontend dev server started (PID: {vite_process.pid})")
+    print("Press Ctrl+C to stop all servers")
+    print()
+
+    try:
+        # Start FastAPI server (blocks until interrupted)
+        uvicorn.run("web.backend.app:app", host=host, port=port, log_level="info")
+    finally:
+        stop_status_worker()
+        stop_scheduler()
+        # Clean up Vite process
+        vite_process.terminate()
+        vite_process.wait()
+        print("\nAll servers stopped.")
+
+
 def main():
     """Main function with CLI argument parsing."""
     parser = argparse.ArgumentParser(description="Dotmate - Device message scheduler")
@@ -228,6 +344,20 @@ def main():
 
     # Daemon command (default)
     subparsers.add_parser("daemon", help="Start the daemon (default)")
+
+    # Web admin command
+    web_parser = subparsers.add_parser("web", help="Start the web admin panel")
+    web_parser.add_argument(
+        "--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)"
+    )
+    web_parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
+
+    # Dev command (backend + frontend)
+    dev_parser = subparsers.add_parser("dev", help="Start backend + frontend dev servers")
+    dev_parser.add_argument(
+        "--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)"
+    )
+    dev_parser.add_argument("--port", type=int, default=8000, help="Port to bind (default: 8000)")
 
     # Force push command
     push_parser = subparsers.add_parser("push", help="Force push update to device")
@@ -543,6 +673,10 @@ def main():
             demo_params["task_alias"] = args.task_alias
 
         generate_demo(args.scenario, args.config, args.output, **demo_params)
+    elif args.command == "dev":
+        start_dev(args.host, args.port)
+    elif args.command == "web":
+        start_web(args.host, args.port)
     else:
         # Default to daemon mode
         start_daemon(args.config)

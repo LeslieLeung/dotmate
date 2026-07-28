@@ -7,33 +7,52 @@ dotmate/
 ├── main.py                 # 主程序入口
 ├── config.example.yaml     # 配置文件模板
 ├── pyproject.toml          # 项目依赖配置
-└── dotmate/
-    ├── api/
-    │   └── api.py          # API 客户端
-    ├── config/
-    │   └── models.py       # 配置模型
-    ├── font/
-    │   ├── manager.py      # 字体管理器
-    │   └── resource/       # 字体文件目录
-    │       ├── Hack-Bold.ttf
-    │       ├── Hack-Regular.ttf
-    │       └── SourceHanSansSC-VF.otf
-    └── view/
-        ├── base.py         # 基础视图类
-        ├── factory.py      # 视图工厂
-        ├── image.py        # 图像视图基类
-        ├── title_image.py  # 标题图像视图
-        ├── work.py         # 工作倒计时视图
-        ├── text.py         # 文本消息视图
-        ├── code_status.py  # 代码状态视图
-        ├── umami_stats.py  # Umami 统计视图
-        └── code_plan_usage.py  # 代码计划用量视图
+├── dotmate/
+│   ├── api/
+│   │   └── api.py          # API 客户端
+│   ├── config/
+│   │   └── models.py       # 配置模型
+│   ├── font/
+│   │   ├── manager.py      # 字体管理器
+│   │   └── resource/       # 字体文件目录
+│   │       ├── Hack-Bold.ttf
+│   │       ├── Hack-Regular.ttf
+│   │       └── SourceHanSansSC-VF.otf
+│   └── view/
+│       ├── base.py         # 基础视图类
+│       ├── factory.py      # 视图工厂
+│       ├── image.py        # 图像视图基类
+│       ├── title_image.py  # 标题图像视图
+│       ├── work.py         # 工作倒计时视图
+│       ├── text.py         # 文本消息视图
+│       ├── code_status.py  # 代码状态视图
+│       ├── umami_stats.py  # Umami 统计视图
+│       └── code_plan_usage.py  # 代码计划用量视图
+└── web/
+    ├── backend/            # FastAPI 后端
+    │   ├── app.py          # FastAPI 应用入口
+    │   ├── db.py           # SQLite 数据库配置
+    │   ├── models.py       # SQLModel 数据模型
+    │   ├── schemas.py      # Pydantic 请求/响应模型
+    │   ├── scheduler.py    # 后台调度器
+    │   └── routes/
+    │       ├── auth.py     # Token 认证
+    │       ├── devices.py  # 设备和调度 CRUD
+    │       ├── settings.py # 全局设置
+    │       └── schema.py   # 视图类型 Schema
+    └── frontend/           # React + shadcn/ui 前端
+        ├── src/
+        │   ├── components/ # UI 组件
+        │   ├── pages/      # 页面
+        │   └── lib/        # API 客户端和工具
+        └── dist/           # 构建产物
 ```
 
 ## 开发环境搭建
 
 ### 环境要求
 - Python >= 3.12
+- Node.js >= 20.19（用于前端构建）
 - uv 包管理器（推荐）
 
 ### 安装开发依赖
@@ -42,12 +61,121 @@ dotmate/
 git clone https://github.com/leslieleung/dotmate
 cd dotmate
 
-## 安装环境
+# 安装 Python 环境
 uv venv
-
-# 安装依赖
 uv sync
+
+# 安装前端依赖
+cd web/frontend
+npm install
+cd ../..
 ```
+
+### 运行模式
+
+#### 1. 传统模式 (config.yaml)
+
+使用 YAML 配置文件运行守护进程：
+
+```bash
+# 复制配置模板
+cp config.example.yaml config.yaml
+# 编辑 config.yaml 填入你的配置
+
+# 启动守护进程
+python main.py daemon
+```
+
+#### 2. Web 管理面板模式
+
+使用 SQLite 数据库和 Web 界面管理设备和调度任务：
+
+```bash
+# 设置管理员 Token（仅本机访问时可选；对外监听时必填）
+export ADMIN_TOKEN="your-secret-token"
+
+# 生产模式：构建前端并启动服务
+make web
+# 访问 http://localhost:8000
+
+# 或指定端口
+make build-frontend
+python main.py web --port 9000
+
+# 允许其他主机访问（必须先设置 ADMIN_TOKEN）
+python main.py web --host 0.0.0.0
+
+# 开发模式：同时启动后端 API 和前端开发服务器（支持热更新）
+python main.py dev
+# 后端 API: http://localhost:8000
+# 前端: http://localhost:5173
+```
+
+也可以使用 Makefile：
+
+```bash
+make dev   # 开发模式
+make web   # 生产模式（自动构建前端）
+```
+
+##### 环境变量
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `ADMIN_TOKEN` | 管理面板认证 Token；非本机监听时必填 | 空（仅允许本机免认证） |
+| `DOTMATE_DB_PATH` | SQLite 数据库路径 | `data/dotmate.db` |
+
+##### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/settings` | 获取全局设置 |
+| PUT | `/api/settings` | 更新全局设置 |
+| GET | `/api/vendors` | 获取支持的 Vendor 与能力 |
+| GET | `/api/api-keys` | 获取已绑定 API Key（仅返回掩码） |
+| POST | `/api/api-keys/batch` | 批量绑定 API Key 并导入设备 |
+| POST | `/api/api-keys/sync-all` | 同步全部 API Key 的设备 |
+| POST | `/api/api-keys/{id}/sync` | 同步单个 API Key 的设备 |
+| PUT | `/api/api-keys/{id}` | 重命名 API Key |
+| DELETE | `/api/api-keys/{id}` | 删除未被设备使用的 API Key |
+| GET | `/api/devices` | 获取所有设备 |
+| POST | `/api/devices` | 创建设备 |
+| GET | `/api/devices/{id}` | 获取单个设备 |
+| PUT | `/api/devices/{id}` | 更新设备 |
+| DELETE | `/api/devices/{id}` | 删除设备 |
+| POST | `/api/devices/remote/statuses/refresh` | 异步刷新全部设备状态 |
+| POST | `/api/devices/{id}/remote/status/refresh` | 异步刷新单台设备状态 |
+| PATCH | `/api/devices/{id}/remote/status/policy` | 设置单台设备状态轮询间隔 |
+| GET | `/api/devices/{id}/remote/settings` | 读取远端设备设置 |
+| PATCH | `/api/devices/{id}/remote/settings` | 修改远端设备设置 |
+| GET | `/api/devices/{id}/remote/timezones` | 获取 Vendor 支持的时区 |
+| POST | `/api/devices/{id}/remote/next` | 切换到下一条设备内容 |
+| GET | `/api/devices/{id}/remote/content` | 获取设备内容列表 |
+| GET | `/api/devices/{id}/schedules` | 获取设备的调度任务 |
+| POST | `/api/devices/{id}/schedules` | 创建调度任务 |
+| PUT | `/api/devices/schedules/{id}` | 更新调度任务 |
+| DELETE | `/api/devices/schedules/{id}` | 删除调度任务 |
+| GET | `/api/schema/schedule-types` | 获取调度类型 Schema |
+
+##### 前端开发
+
+```bash
+cd web/frontend
+
+# 启动开发服务器（带热更新）
+npm run dev
+
+# 构建生产版本
+npm run build
+```
+
+提交前可在项目根目录运行完整检查：
+
+```bash
+make check  # 后端测试、前端测试、lint 和生产构建
+```
+
+前端开发服务器运行在 `http://localhost:5173`，会自动代理 API 请求到后端 `http://localhost:8000`。
 
 ## 扩展开发
 

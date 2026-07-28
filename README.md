@@ -126,6 +126,15 @@ python main.py daemon
 python main.py
 ```
 
+##### Web 管理面板
+
+```bash
+make web
+# 打开 http://localhost:8000
+```
+
+`make web` 会先构建前端，再启动仅监听本机的管理服务。若要允许其他主机访问，请先设置 `ADMIN_TOKEN`，再使用 `python main.py web --host 0.0.0.0`。Web 模式使用 SQLite 保存配置，支持一次绑定多个带 vendor 的 API Key、从每个 Key 自动导入并去重设备、按 Key 管理任务，以及读取 MindReset 设备设置、切换下一条内容和查看设备内容列表。后台状态 worker 会按设备的供电/电池刷新间隔自动缓存电量、Wi-Fi、固件和渲染状态，也可为每台设备覆盖轮询间隔或从界面手动刷新。当前 vendor 为 `mindreset`；YAML/CLI 模式仍使用配置文件中的单个 `api_key`。
+
 ##### 手动发送消息
 ```bash
 # 发送文本消息
