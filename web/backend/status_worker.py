@@ -53,10 +53,18 @@ def ensure_status_record(
 def ensure_all_status_records(session: Session) -> int:
     created = 0
     now = utc_now()
-    for device_id in session.exec(select(Device.id)).all():
-        if session.get(DeviceStatusRecord, device_id) is None:
+    for device in session.exec(select(Device)).all():
+        credential = session.get(ApiCredential, device.api_credential_id)
+        if credential is None:
+            continue
+        try:
+            if not get_vendor(credential.vendor).supports_status:
+                continue
+        except ValueError:
+            continue
+        if session.get(DeviceStatusRecord, device.id) is None:
             session.add(
-                DeviceStatusRecord(device_id=device_id, next_refresh_at=now)
+                DeviceStatusRecord(device_id=device.id, next_refresh_at=now)
             )
             created += 1
     if created:
@@ -302,6 +310,17 @@ def _due_device_ids(now: datetime) -> list[int]:
         records = session.exec(select(DeviceStatusRecord)).all()
         due = []
         for record in records:
+            device = session.get(Device, record.device_id)
+            if device is None:
+                continue
+            credential = session.get(ApiCredential, device.api_credential_id)
+            if credential is None:
+                continue
+            try:
+                if not get_vendor(credential.vendor).supports_status:
+                    continue
+            except ValueError:
+                continue
             requested = (
                 record.refresh_requested_at is not None
                 and (

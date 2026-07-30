@@ -12,8 +12,11 @@ vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
-    devicesApi: { ...actual.devicesApi, get: getDevice },
-    schemaApi: { getScheduleTypes },
+    devicesApi: {
+      ...actual.devicesApi,
+      get: getDevice,
+      scheduleTypes: getScheduleTypes,
+    },
   };
 });
 
@@ -28,10 +31,28 @@ function makeDevice() {
     api_credential_id: 1,
     api_credential_name: "Personal",
     vendor: "mindreset",
+    vendor_label: "MindReset",
     vendor_capabilities: [],
+    device_model: "quote0",
+    device_model_label: "Quote/0",
+    display_width: 296,
+    display_height: 152,
+    display_capabilities: ["text", "image", "battery_overlay", "refresh_time_overlay"],
     show_battery_icon: false,
     show_battery_percentage: false,
     show_refresh_time: false,
+    remote_status: null,
+    status_policy: {
+      refresh_interval_minutes: null,
+      effective_interval_minutes: null,
+      interval_source: null,
+      state: "pending",
+      last_attempt_at: null,
+      last_success_at: null,
+      next_refresh_at: null,
+      last_error: null,
+      refresh_requested_at: null,
+    },
     schedules: [
       {
         id: 4,

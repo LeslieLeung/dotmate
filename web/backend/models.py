@@ -31,6 +31,7 @@ class Device(SQLModel, table=True):
     name: str
     device_id: str
     api_credential_id: int = Field(foreign_key="api_credential.id", index=True)
+    device_model: str = Field(default="quote0", index=True)
     show_battery_icon: bool = False
     show_battery_percentage: bool = False
     show_refresh_time: bool = False

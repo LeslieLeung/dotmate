@@ -2,7 +2,7 @@ import pytest
 import json
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import inspect
-from sqlmodel import Session, create_engine
+from sqlmodel import SQLModel, Session, create_engine
 
 from dotmate.api.api import (
     ApiResponse,
@@ -63,9 +63,9 @@ def test_init_db_creates_final_schema_without_migrations(tmp_path, monkeypatch):
     db.init_db()
     inspector = inspect(engine)
     assert "api_credential" in inspector.get_table_names()
-    assert "api_credential_id" in {
-        column["name"] for column in inspector.get_columns("device")
-    }
+    device_columns = {column["name"] for column in inspector.get_columns("device")}
+    assert "api_credential_id" in device_columns
+    assert "device_model" in device_columns
     assert "name" in {column["name"] for column in inspector.get_columns("schedule")}
     assert "device_status" in inspector.get_table_names()
     assert "api_key" not in {
@@ -550,3 +550,289 @@ def test_scheduler_restores_last_known_good_snapshot(monkeypatch):
     assert fake.jobs == ["old"]
     assert fake.paused is False
     assert scheduler_module._active_job_specs == [old]
+
+
+def test_vendors_and_device_models_are_listed(api_client):
+    vendors = api_client.get("/api/vendors").json()
+    assert {item["id"] for item in vendors} == {"mindreset", "zectrix"}
+    mindreset = next(item for item in vendors if item["id"] == "mindreset")
+    zectrix = next(item for item in vendors if item["id"] == "zectrix")
+    assert mindreset["supports_device_discovery"] is True
+    assert zectrix["supports_device_discovery"] is False
+    assert "status" in mindreset["capabilities"]
+    assert zectrix["capabilities"] == []
+
+    models = api_client.get("/api/device-models").json()
+    assert {item["id"] for item in models} == {"quote0", "note4"}
+    note4 = api_client.get("/api/device-models?vendor=zectrix").json()
+    assert len(note4) == 1
+    assert note4[0]["id"] == "note4"
+    assert note4[0]["width"] == 400
+    assert note4[0]["supports_text"] is False
+
+
+def test_zectrix_credential_saves_without_discovery(api_client):
+    response = api_client.post(
+        "/api/api-keys/batch",
+        json={
+            "items": [
+                {"name": "Zectrix Key", "vendor": "zectrix", "api_key": "zt_test_key"}
+            ]
+        },
+    )
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "success"
+    assert result["validation_status"] == "unverified"
+    assert result["sync"] is None
+    assert result["credential"]["vendor"] == "zectrix"
+
+    sync = api_client.post(f"/api/api-keys/{result['credential']['id']}/sync")
+    assert sync.status_code == 422
+
+
+def test_note4_device_and_schedule_schema(api_client):
+    credential_id = api_client.post(
+        "/api/api-keys/batch",
+        json={
+            "items": [
+                {"name": "Zectrix Key", "vendor": "zectrix", "api_key": "zt_note4"}
+            ]
+        },
+    ).json()["results"][0]["credential"]["id"]
+
+    created = api_client.post(
+        "/api/devices",
+        json={
+            "name": "Note 4 Desk",
+            "device_id": "AA:BB:CC:DD:EE:FF",
+            "api_credential_id": credential_id,
+            "device_model": "note4",
+            "show_battery_icon": True,
+            "show_battery_percentage": True,
+            "show_refresh_time": True,
+        },
+    )
+    assert created.status_code == 201
+    device = created.json()
+    assert device["device_model"] == "note4"
+    assert device["device_model_label"] == "Note 4"
+    assert device["display_width"] == 400
+    assert device["display_height"] == 300
+    assert device["show_battery_icon"] is False
+    assert device["show_battery_percentage"] is False
+    assert device["show_refresh_time"] is True
+    assert "battery_overlay" not in device["display_capabilities"]
+
+    mismatched = api_client.post(
+        "/api/devices",
+        json={
+            "name": "Bad",
+            "device_id": "bad-id",
+            "api_credential_id": credential_id,
+            "device_model": "quote0",
+        },
+    )
+    assert mismatched.status_code == 422
+
+    schema = api_client.get(f"/api/devices/{device['id']}/schedule-types").json()
+    assert "text" not in schema
+    assert "title_image" in schema
+    assert "page_id" in schema["title_image"]["fields"]
+    assert "border" not in schema["title_image"]["fields"]
+    assert "link" not in schema["title_image"]["fields"]
+    dither = schema["title_image"]["fields"]["dither_type"]
+    assert [option["value"] for option in dither["options"]] == ["DIFFUSION", "NONE"]
+
+    text = api_client.post(
+        f"/api/devices/{device['id']}/schedules",
+        json={
+            "name": "Text",
+            "cron": "0 9 * * *",
+            "type": "text",
+            "params": {"message": "hi"},
+        },
+    )
+    assert text.status_code == 422
+
+    bad_page = api_client.post(
+        f"/api/devices/{device['id']}/schedules",
+        json={
+            "name": "Title",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "Hello", "page_id": 9},
+        },
+    )
+    assert bad_page.status_code == 422
+    assert "page_id" in bad_page.json()["detail"]["fields"]
+
+    created_schedule = api_client.post(
+        f"/api/devices/{device['id']}/schedules",
+        json={
+            "name": "Title",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {
+                "main_title": "Hello",
+                "page_id": 3,
+                "border": 1,
+                "link": "https://example.com",
+            },
+        },
+    )
+    assert created_schedule.status_code == 201
+    body = created_schedule.json()
+    assert body["params"]["page_id"] == 3
+    assert "border" not in body["params"]
+    assert "link" not in body["params"]
+    assert any(item["value"] == "Page 3" for item in body["summary"])
+
+
+def test_quote0_schedule_schema_hides_page_id(api_client):
+    device_id = create_device(api_client)
+    device = api_client.get(f"/api/devices/{device_id}").json()
+    assert device["device_model"] == "quote0"
+    assert device["display_width"] == 296
+
+    schema = api_client.get(f"/api/devices/{device_id}/schedule-types").json()
+    assert "text" in schema
+    assert "page_id" not in schema["title_image"]["fields"]
+    assert "border" in schema["title_image"]["fields"]
+
+
+def test_scheduler_passes_device_profile(api_client, monkeypatch):
+    credential_id = api_client.post(
+        "/api/api-keys/batch",
+        json={
+            "items": [
+                {"name": "Zectrix Key", "vendor": "zectrix", "api_key": "zt_sched"}
+            ]
+        },
+    ).json()["results"][0]["credential"]["id"]
+    device = api_client.post(
+        "/api/devices",
+        json={
+            "name": "Note",
+            "device_id": "mac-1",
+            "api_credential_id": credential_id,
+            "device_model": "note4",
+        },
+    ).json()
+    assert (
+        api_client.post(
+            f"/api/devices/{device['id']}/schedules",
+            json={
+                "name": "Title",
+                "cron": "0 9 * * *",
+                "type": "title_image",
+                "params": {"main_title": "Hello", "page_id": 2},
+            },
+        ).status_code
+        == 201
+    )
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "create_vendor_client",
+        lambda vendor, key, interval: object(),
+    )
+    specs = scheduler_module._build_job_specs()
+    assert len(specs) == 1
+    profile = specs[0].args[5]
+    assert profile.name == "note4"
+    assert profile.width == 400
+    assert profile.height == 300
+    assert profile.supports_text is False
+
+
+def test_status_worker_skips_vendors_without_status(tmp_path, monkeypatch):
+    from web.backend import status_worker
+    from web.backend.models import ApiCredential, Device, DeviceStatusRecord
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'status-skip.db'}")
+    monkeypatch.setattr(db, "engine", engine)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        mindreset = ApiCredential(
+            name="MR", vendor="mindreset", api_key="mr-key"
+        )
+        zectrix = ApiCredential(
+            name="ZX", vendor="zectrix", api_key="zt-key"
+        )
+        session.add(mindreset)
+        session.add(zectrix)
+        session.flush()
+        quote = Device(
+            name="Quote",
+            device_id="q1",
+            api_credential_id=mindreset.id,
+            device_model="quote0",
+        )
+        note = Device(
+            name="Note",
+            device_id="n1",
+            api_credential_id=zectrix.id,
+            device_model="note4",
+        )
+        session.add(quote)
+        session.add(note)
+        session.commit()
+        quote_id, note_id = quote.id, note.id
+
+    created = status_worker.ensure_all_status_records(Session(engine))
+    assert created == 1
+    with Session(engine) as session:
+        assert session.get(DeviceStatusRecord, quote_id) is not None
+        assert session.get(DeviceStatusRecord, note_id) is None
+
+    due = status_worker._due_device_ids(status_worker.utc_now())
+    assert quote_id in due
+    assert note_id not in due
+
+
+def test_migrate_schema_backfills_quote0(tmp_path, monkeypatch):
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    monkeypatch.setattr(db, "engine", engine)
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE api_credential (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR NOT NULL,
+                vendor VARCHAR NOT NULL,
+                api_key VARCHAR NOT NULL
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            """
+            CREATE TABLE device (
+                id INTEGER PRIMARY KEY,
+                name VARCHAR NOT NULL,
+                device_id VARCHAR NOT NULL,
+                api_credential_id INTEGER NOT NULL,
+                show_battery_icon BOOLEAN NOT NULL,
+                show_battery_percentage BOOLEAN NOT NULL,
+                show_refresh_time BOOLEAN NOT NULL
+            )
+            """
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO api_credential (id, name, vendor, api_key) "
+            "VALUES (1, 'Personal', 'mindreset', 'key')"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO device "
+            "(id, name, device_id, api_credential_id, show_battery_icon, "
+            "show_battery_percentage, show_refresh_time) "
+            "VALUES (1, 'Desk', 'device-1', 1, 1, 1, 0)"
+        )
+
+    db.init_db()
+    with Session(engine) as session:
+        from web.backend.models import Device
+
+        device = session.get(Device, 1)
+        assert device.device_model == "quote0"
+        assert device.show_battery_icon is True

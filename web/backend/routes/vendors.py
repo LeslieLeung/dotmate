@@ -13,7 +13,11 @@ def get_vendors(_=Depends(verify_token)):
         VendorRead(
             id=vendor.id,
             label=vendor.label,
+            description=vendor.description,
             capabilities=list(vendor.capabilities),
+            credential_hint=vendor.credential_hint,
+            supports_credential_validation=vendor.supports_credential_validation,
+            supports_device_discovery=vendor.supports_device_discovery,
         )
         for vendor in list_vendors()
     ]

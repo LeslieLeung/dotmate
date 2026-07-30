@@ -262,7 +262,7 @@ export function SettingsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div><CardTitle>API Keys</CardTitle><CardDescription>Credentials used to discover and control devices.</CardDescription></div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => void handleSync()} disabled={!credentials.length || syncingId !== null}>
+              <Button variant="outline" onClick={() => void handleSync()} disabled={!credentials.some((c) => vendors.find((v) => v.id === c.vendor)?.supports_device_discovery) || syncingId !== null}>
                 {syncingId === "all" ? <Spinner data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
                 Sync All
               </Button>
@@ -273,21 +273,28 @@ export function SettingsPage() {
         <CardContent className="overflow-x-auto p-0">
           {credentials.length ? (
             <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Vendor</TableHead><TableHead>Key</TableHead><TableHead>Devices</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Vendor</TableHead><TableHead>Key</TableHead><TableHead>Devices</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
               <TableBody>
-                {credentials.map((credential) => (
+                {credentials.map((credential) => {
+                  const vendor = vendors.find((item) => item.id === credential.vendor);
+                  const canSync = Boolean(vendor?.supports_device_discovery);
+                  return (
                   <TableRow key={credential.id}>
                     <TableCell className="font-medium">{credential.name}</TableCell>
-                    <TableCell><Badge variant="secondary">{credential.vendor}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary">{credential.vendor_label || credential.vendor}</Badge></TableCell>
                     <TableCell className="font-mono text-sm">{credential.masked_key}</TableCell>
                     <TableCell><Button variant="link" asChild className="px-0"><Link to={`/devices?api_key_id=${credential.id}`}>{credential.device_count}</Link></Button></TableCell>
+                    <TableCell><Badge variant="secondary">{credential.validation_status || "unverified"}</Badge></TableCell>
                     <TableCell><div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" aria-label={`Sync ${credential.name}`} onClick={() => void handleSync(credential)} disabled={syncingId !== null}>{syncingId === credential.id ? <Spinner /> : <RefreshCw />}</Button>
+                      {canSync && (
+                        <Button variant="ghost" size="icon-sm" aria-label={`Sync ${credential.name}`} onClick={() => void handleSync(credential)} disabled={syncingId !== null}>{syncingId === credential.id ? <Spinner /> : <RefreshCw />}</Button>
+                      )}
                       <Button variant="ghost" size="icon-sm" aria-label={`Rename ${credential.name}`} onClick={() => { setRenaming(credential); setRenameValue(credential.name); }}><Pencil /></Button>
                       <Button variant="ghost" size="icon-sm" aria-label={`Delete ${credential.name}`} onClick={() => setDeleting(credential)} disabled={credential.device_count > 0}><Trash2 /></Button>
                     </div></TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           ) : (
@@ -322,7 +329,15 @@ export function SettingsPage() {
               {batchResults.map((result) => (
                 <Card key={result.index}>
                   <CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle>{result.name}</CardTitle><CardDescription>{result.vendor}</CardDescription></div><Badge variant={result.status === "success" ? "secondary" : "destructive"}>{result.status}</Badge></div></CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">{result.status === "success" ? `${result.sync?.created ?? 0} devices added, ${result.sync?.duplicates ?? 0} duplicates` : result.error}</CardContent>
+                  <CardContent className="text-sm text-muted-foreground">
+                    {result.status === "success"
+                      ? result.sync
+                        ? `${result.sync.created} devices added, ${result.sync.duplicates} duplicates`
+                        : result.validation_status === "unverified"
+                          ? "Saved without remote validation. Add devices manually from the Devices page."
+                          : "Credential saved."
+                      : result.error}
+                  </CardContent>
                 </Card>
               ))}
             </div>
@@ -334,7 +349,7 @@ export function SettingsPage() {
                   <CardContent><FieldGroup>
                     <Field data-invalid={Boolean(rowErrors[index]?.vendor)}><FieldLabel>Vendor*</FieldLabel><Select value={row.vendor} onValueChange={(value) => updateRow(index, "vendor", value)} disabled={adding}><SelectTrigger className="w-full" aria-invalid={Boolean(rowErrors[index]?.vendor)}><SelectValue /></SelectTrigger><SelectContent><SelectGroup>{vendors.map((vendor) => <SelectItem key={vendor.id} value={vendor.id}>{vendor.label}</SelectItem>)}</SelectGroup></SelectContent></Select><FieldError>{rowErrors[index]?.vendor}</FieldError></Field>
                     <Field data-invalid={Boolean(rowErrors[index]?.name)}><FieldLabel>Name*</FieldLabel><Input value={row.name} onChange={(event) => updateRow(index, "name", event.target.value)} placeholder="e.g. Personal" aria-invalid={Boolean(rowErrors[index]?.name)} disabled={adding} /><FieldError>{rowErrors[index]?.name}</FieldError></Field>
-                    <Field data-invalid={Boolean(rowErrors[index]?.api_key)}><FieldLabel>API Key*</FieldLabel><Input type="password" value={row.api_key} onChange={(event) => updateRow(index, "api_key", event.target.value)} placeholder="Enter API key" autoComplete="new-password" aria-invalid={Boolean(rowErrors[index]?.api_key)} disabled={adding} /><FieldError>{rowErrors[index]?.api_key}</FieldError></Field>
+                    <Field data-invalid={Boolean(rowErrors[index]?.api_key)}><FieldLabel>API Key*</FieldLabel><Input type="password" value={row.api_key} onChange={(event) => updateRow(index, "api_key", event.target.value)} placeholder="Enter API key" autoComplete="new-password" aria-invalid={Boolean(rowErrors[index]?.api_key)} disabled={adding} /><FieldDescription>{vendors.find((vendor) => vendor.id === row.vendor)?.credential_hint}</FieldDescription><FieldError>{rowErrors[index]?.api_key}</FieldError></Field>
                   </FieldGroup></CardContent>
                 </Card>
               ))}
@@ -342,7 +357,7 @@ export function SettingsPage() {
             </div>
           )}
           <DialogFooter>
-            {batchResults ? <Button onClick={() => setAddOpen(false)}>Done</Button> : <><Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>Cancel</Button><Button onClick={() => void handleAddCredentials()} disabled={adding}>{adding && <Spinner data-icon="inline-start" />}{adding ? "Validating..." : `Add ${credentialRows.length} ${credentialRows.length === 1 ? "Key" : "Keys"}`}</Button></>}
+            {batchResults ? <Button onClick={() => setAddOpen(false)}>Done</Button> : <><Button variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>Cancel</Button><Button onClick={() => void handleAddCredentials()} disabled={adding}>{adding && <Spinner data-icon="inline-start" />}{adding ? "Saving..." : `Add ${credentialRows.length} ${credentialRows.length === 1 ? "Key" : "Keys"}`}</Button></>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

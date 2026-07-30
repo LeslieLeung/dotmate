@@ -35,7 +35,27 @@ class SettingsUpdate(BaseModel):
 class VendorRead(BaseModel):
     id: str
     label: str
+    description: str = ""
     capabilities: list[str]
+    credential_hint: str = ""
+    supports_credential_validation: bool = False
+    supports_device_discovery: bool = False
+
+
+class DeviceModelRead(BaseModel):
+    id: str
+    vendor_id: str
+    label: str
+    description: str
+    width: int
+    height: int
+    supports_text: bool
+    supports_image: bool
+    supports_battery_overlay: bool
+    supports_page_id: bool
+    device_id_label: str
+    device_id_example: str
+    display_capabilities: list[str]
 
 
 class ApiCredentialCreate(BaseModel):
@@ -77,8 +97,10 @@ class ApiCredentialRead(BaseModel):
     id: int
     name: str
     vendor: str
+    vendor_label: str = ""
     masked_key: str
     device_count: int
+    validation_status: Literal["validated", "unverified", "invalid"] = "unverified"
 
 
 class DeviceSyncStats(BaseModel):
@@ -95,6 +117,7 @@ class ApiCredentialBatchResult(BaseModel):
     status: Literal["success", "error"]
     credential: Optional[ApiCredentialRead] = None
     sync: Optional[DeviceSyncStats] = None
+    validation_status: Optional[Literal["validated", "unverified", "invalid"]] = None
     error: Optional[str] = None
 
 
@@ -118,17 +141,23 @@ class DeviceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     device_id: str = Field(min_length=1, max_length=255)
     api_credential_id: int = Field(gt=0)
+    device_model: str = Field(default="quote0", min_length=1, max_length=50)
     show_battery_icon: bool = False
     show_battery_percentage: bool = False
     show_refresh_time: bool = False
 
-    @field_validator("name", "device_id")
+    @field_validator("name", "device_id", "device_model")
     @classmethod
     def strip_device_strings(cls, value: str) -> str:
         value = value.strip()
         if not value:
             raise ValueError("This field is required")
         return value
+
+    @field_validator("device_model")
+    @classmethod
+    def normalize_device_model(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class DeviceUpdate(BaseModel):
@@ -210,7 +239,13 @@ class DeviceRead(BaseModel):
     api_credential_id: int
     api_credential_name: str
     vendor: str
+    vendor_label: str
     vendor_capabilities: list[str]
+    device_model: str
+    device_model_label: str
+    display_width: int
+    display_height: int
+    display_capabilities: list[str]
     show_battery_icon: bool
     show_battery_percentage: bool
     show_refresh_time: bool

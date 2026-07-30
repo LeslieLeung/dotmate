@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from pydantic_core import PydanticUndefined
 
 from dotmate.view.factory import ViewFactory
+from web.backend.device_models import DeviceModelDefinition, get_device_model
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,19 @@ COMMON_FIELD_OVERRIDES: dict[str, dict[str, Any]] = {
         "description": "Optional alias for the device task.",
         "section": "advanced",
     },
+    "page_id": {
+        "label": "Page",
+        "description": "Note 4 page slot (1–5).",
+        "input": "select",
+        "section": "display",
+        "options": [
+            {"value": 1, "label": "Page 1"},
+            {"value": 2, "label": "Page 2"},
+            {"value": 3, "label": "Page 3"},
+            {"value": 4, "label": "Page 4"},
+            {"value": 5, "label": "Page 5"},
+        ],
+    },
     "styles": {
         "label": "Text Styles",
         "description": "Existing structured styles are preserved but are not editable yet.",
@@ -73,7 +87,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "work": ScheduleTypeMetadata(
         label="Work Countdown",
         description="Show the remaining time in a configured work day.",
-        summary_fields=("clock_in", "clock_out"),
+        summary_fields=("clock_in", "clock_out", "page_id"),
         field_overrides={
             "clock_in": {"label": "Clock In", "input": "time"},
             "clock_out": {"label": "Clock Out", "input": "time"},
@@ -96,7 +110,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "code_status": ScheduleTypeMetadata(
         label="WakaTime Coding Status",
         description="Display today's coding time and top languages from WakaTime.",
-        summary_fields=("wakatime_user_id", "wakatime_url"),
+        summary_fields=("wakatime_user_id", "wakatime_url", "page_id"),
         field_overrides={
             "wakatime_url": {"label": "WakaTime URL", "input": "url"},
             "wakatime_api_key": {
@@ -115,7 +129,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "title_image": ScheduleTypeMetadata(
         label="Title Card",
         description="Generate an e-ink image from a main title and subtitle.",
-        summary_fields=("main_title", "sub_title"),
+        summary_fields=("main_title", "sub_title", "page_id"),
         field_overrides={
             "main_title": {"label": "Main Title"},
             "sub_title": {"label": "Subtitle"},
@@ -124,7 +138,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "umami_stats": ScheduleTypeMetadata(
         label="Umami Analytics",
         description="Display traffic metrics from an Umami website.",
-        summary_fields=("title", "umami_time_range"),
+        summary_fields=("title", "umami_time_range", "page_id"),
         field_overrides={
             "umami_host": {"label": "Umami Host", "input": "url"},
             "umami_website_id": {"label": "Website ID"},
@@ -143,7 +157,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "github_contributions": ScheduleTypeMetadata(
         label="GitHub Contributions",
         description="Show contribution activity and repository statistics.",
-        summary_fields=("github_username",),
+        summary_fields=("github_username", "page_id"),
         field_overrides={
             "github_username": {"label": "GitHub Username"},
             "github_token": {
@@ -156,7 +170,7 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
     "code_plan_usage": ScheduleTypeMetadata(
         label="Code Plan Usage",
         description="Display quota utilization from an OnWatch-compatible API.",
-        summary_fields=("provider", "api_url"),
+        summary_fields=("provider", "api_url", "page_id"),
         field_overrides={
             "api_url": {"label": "API URL", "input": "url"},
             "provider": {"label": "Provider"},
@@ -169,6 +183,19 @@ SCHEDULE_TYPE_METADATA: dict[str, ScheduleTypeMetadata] = {
         },
     ),
 }
+
+# Image protocol fields that may be filtered by device model.
+_IMAGE_PROTOCOL_FIELDS = frozenset(
+    {
+        "link",
+        "border",
+        "dither_type",
+        "dither_kernel",
+        "task_key",
+        "task_alias",
+        "page_id",
+    }
+)
 
 
 def get_type_metadata(type_name: str) -> ScheduleTypeMetadata | None:
@@ -234,12 +261,66 @@ def _field_label(field_name: str) -> str:
     return field_name.replace("_", " ").title()
 
 
-def get_schedule_type_schema() -> dict[str, dict[str, Any]]:
+def _apply_model_field_rules(
+    field_name: str,
+    descriptor: dict[str, Any],
+    model: DeviceModelDefinition | None,
+) -> dict[str, Any] | None:
+    """Filter or adapt a field for a specific device model.
+
+    Returns ``None`` when the field must be omitted from the schema.
+    """
+    if model is None:
+        # Global schema: hide Note 4-only page_id so Quote/0 forms stay clean.
+        if field_name == "page_id":
+            return None
+        return descriptor
+
+    if field_name in _IMAGE_PROTOCOL_FIELDS:
+        if field_name not in model.allowed_image_fields:
+            return None
+
+    if field_name == "dither_type" and model.id == "note4":
+        descriptor = {
+            **descriptor,
+            "label": "Dithering",
+            "description": "Enable or disable dithering for Note 4.",
+            "options": [
+                {"value": "DIFFUSION", "label": "Enabled"},
+                {"value": "NONE", "label": "Disabled"},
+            ],
+            "input": "select",
+        }
+
+    if field_name == "page_id" and model.supports_page_id:
+        descriptor = {
+            **descriptor,
+            **COMMON_FIELD_OVERRIDES["page_id"],
+        }
+
+    return descriptor
+
+
+def get_schedule_type_schema(
+    device_model: str | DeviceModelDefinition | None = None,
+) -> dict[str, dict[str, Any]]:
+    model: DeviceModelDefinition | None
+    if isinstance(device_model, DeviceModelDefinition):
+        model = device_model
+    elif isinstance(device_model, str):
+        model = get_device_model(device_model)
+    else:
+        model = None
+
     result: dict[str, dict[str, Any]] = {}
     for type_name in ViewFactory.get_available_types():
         metadata = get_type_metadata(type_name)
         if not metadata or not metadata.web_editable:
             continue
+
+        if model is not None and ViewFactory.requires_text(type_name):
+            if not model.supports_text:
+                continue
 
         params_class = ViewFactory.get_params_class(type_name)
         fields: dict[str, dict[str, Any]] = {}
@@ -268,7 +349,10 @@ def get_schedule_type_schema() -> dict[str, dict[str, Any]]:
             if field_info.default is not PydanticUndefined:
                 descriptor["default"] = field_info.default
             descriptor.update(override)
-            fields[field_name] = descriptor
+
+            filtered = _apply_model_field_rules(field_name, descriptor, model)
+            if filtered is not None:
+                fields[field_name] = filtered
 
         result[type_name] = {
             "label": metadata.label,
@@ -278,10 +362,96 @@ def get_schedule_type_schema() -> dict[str, dict[str, Any]]:
     return result
 
 
+def unsupported_param_errors(
+    type_name: str,
+    params: dict[str, Any] | None,
+    device_model: str | DeviceModelDefinition,
+) -> dict[str, str]:
+    """Return field errors for params that the device model cannot accept.
+
+    Unsupported optional image-protocol fields are sanitized away rather than
+    rejected so legacy Quote/0 params can be cleared when saving for Note 4.
+    """
+    model = (
+        device_model
+        if isinstance(device_model, DeviceModelDefinition)
+        else get_device_model(device_model)
+    )
+    if ViewFactory.requires_text(type_name) and not model.supports_text:
+        return {
+            "type": (
+                f"{model.label} does not support text schedules. "
+                "Choose an image-based schedule type."
+            )
+        }
+
+    errors: dict[str, str] = {}
+    raw = params or {}
+    if model.supports_page_id and "page_id" in raw and raw["page_id"] not in (None, ""):
+        try:
+            page = int(raw["page_id"])
+        except (TypeError, ValueError):
+            errors["page_id"] = "Page must be an integer from 1 to 5"
+        else:
+            if page < 1 or page > 5:
+                errors["page_id"] = "Page must be an integer from 1 to 5"
+    if model.id == "note4" and raw.get("dither_type") not in (
+        None,
+        "",
+        "DIFFUSION",
+        "NONE",
+        "ORDERED",
+    ):
+        errors["dither_type"] = "Choose Enabled or Disabled dithering"
+    return errors
+
+
+def sanitize_params_for_model(
+    type_name: str,
+    params: dict[str, Any],
+    device_model: str | DeviceModelDefinition,
+) -> dict[str, Any]:
+    """Drop unsupported image protocol fields before persistence/execution."""
+    model = (
+        device_model
+        if isinstance(device_model, DeviceModelDefinition)
+        else get_device_model(device_model)
+    )
+    cleaned = dict(params)
+    for field_name in list(cleaned):
+        if (
+            field_name in _IMAGE_PROTOCOL_FIELDS
+            and field_name not in model.allowed_image_fields
+        ):
+            cleaned.pop(field_name, None)
+    if model.id == "note4" and cleaned.get("dither_type") == "ORDERED":
+        cleaned["dither_type"] = "DIFFUSION"
+    return cleaned
+
+
 def validate_params(type_name: str, params: dict[str, Any] | None) -> dict[str, Any]:
     params_class = ViewFactory.get_params_class(type_name)
     validated = params_class.model_validate(params or {})
     return validated.model_dump(mode="json", exclude_none=True)
+
+
+def validate_params_for_device(
+    type_name: str,
+    params: dict[str, Any] | None,
+    device_model: str | DeviceModelDefinition,
+) -> dict[str, Any]:
+    """Validate schedule params against both the view model and device model.
+
+    Raises ``ValueError`` with a ``fields`` attribute (dict[str, str]) when the
+    device model rejects the type or individual fields.
+    """
+    model_errors = unsupported_param_errors(type_name, params, device_model)
+    if model_errors:
+        error = ValueError("Schedule is not valid for this device model")
+        error.fields = model_errors  # type: ignore[attr-defined]
+        raise error
+    cleaned = sanitize_params_for_model(type_name, params or {}, device_model)
+    return validate_params(type_name, cleaned)
 
 
 def validation_errors(exc: ValidationError) -> dict[str, str]:
@@ -293,30 +463,37 @@ def validation_errors(exc: ValidationError) -> dict[str, str]:
 
 
 def build_summary(
-    type_name: str, params: dict[str, Any] | None
+    type_name: str,
+    params: dict[str, Any] | None,
+    device_model: str | DeviceModelDefinition | None = None,
 ) -> list[dict[str, str]]:
     metadata = get_type_metadata(type_name)
     if not metadata or not params:
         return []
 
-    fields = get_schedule_type_schema().get(type_name, {}).get("fields", {})
+    fields = get_schedule_type_schema(device_model).get(type_name, {}).get("fields", {})
     summary: list[dict[str, str]] = []
     for field_name in metadata.summary_fields:
+        if field_name in _IMAGE_PROTOCOL_FIELDS and field_name not in fields:
+            continue
         field_schema = fields.get(field_name, {})
         if field_schema.get("sensitive"):
             continue
         value = params.get(field_name)
         if value in (None, ""):
             continue
-        rendered = str(value).replace("\n", " ")
-        if len(rendered) > 64:
-            rendered = f"{rendered[:61]}..."
+        if field_name == "page_id":
+            rendered = f"Page {value}"
+        else:
+            rendered = str(value).replace("\n", " ")
+            if len(rendered) > 64:
+                rendered = f"{rendered[:61]}..."
         summary.append(
             {
                 "label": field_schema.get("label", _field_label(field_name)),
                 "value": rendered,
             }
         )
-        if len(summary) == 2:
+        if len(summary) >= 3:
             break
     return summary

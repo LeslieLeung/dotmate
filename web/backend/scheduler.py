@@ -14,7 +14,9 @@ from sqlmodel import Session, select
 
 from dotmate.view.factory import ViewFactory
 from web.backend.db import engine
+from web.backend.device_models import assert_model_matches_vendor
 from web.backend.models import ApiCredential, Device, Schedule, Settings
+from web.backend.schedule_types import sanitize_params_for_model
 from web.backend.vendors import create_vendor_client
 
 logger = logging.getLogger("dotmate.scheduler")
@@ -49,6 +51,21 @@ def _build_job_specs() -> list[JobSpec]:
                     "Device '%s' has no API credential, skipping", device.name
                 )
                 continue
+
+            try:
+                model = assert_model_matches_vendor(
+                    device.device_model, credential.vendor
+                )
+            except ValueError as exc:
+                logger.error(
+                    "Configuration error for device '%s' (vendor=%s model=%s): %s",
+                    device.name,
+                    credential.vendor,
+                    device.device_model,
+                    exc,
+                )
+                continue
+
             if credential.id not in clients:
                 try:
                     clients[credential.id] = create_vendor_client(
@@ -65,6 +82,7 @@ def _build_job_specs() -> list[JobSpec]:
                     )
                     continue
             client = clients[credential.id]
+            profile = model.to_profile()
             schedules = session.exec(
                 select(Schedule).where(Schedule.device_id == device.id)
             ).all()
@@ -73,9 +91,23 @@ def _build_job_specs() -> list[JobSpec]:
                     continue
                 if schedule.type not in ViewFactory.get_available_types():
                     logger.warning(
-                        "Unknown schedule type '%s' for device '%s', skipping",
+                        "Unknown schedule type '%s' for device '%s' "
+                        "(vendor=%s model=%s), skipping",
                         schedule.type,
                         device.name,
+                        credential.vendor,
+                        model.id,
+                    )
+                    continue
+
+                if ViewFactory.requires_text(schedule.type) and not model.supports_text:
+                    logger.error(
+                        "Schedule id=%s type='%s' requires text but device '%s' "
+                        "model '%s' does not support text; skipping",
+                        schedule.id,
+                        schedule.type,
+                        device.name,
+                        model.id,
                     )
                     continue
 
@@ -86,18 +118,27 @@ def _build_job_specs() -> list[JobSpec]:
                     params = params_class.model_validate(raw_params).model_dump(
                         mode="json", exclude_none=True
                     )
+                    params = sanitize_params_for_model(schedule.type, params, model)
                 except (ValueError, json.JSONDecodeError, ValidationError) as exc:
                     logger.error(
-                        "Invalid configuration for schedule id=%s on device '%s', skipping: %s",
+                        "Invalid configuration for schedule id=%s on device '%s' "
+                        "(vendor=%s model=%s), skipping: %s",
                         schedule.id,
                         device.name,
+                        credential.vendor,
+                        model.id,
                         exc,
                     )
                     continue
 
                 overlay = {
-                    "show_battery_icon": device.show_battery_icon,
-                    "show_battery_percentage": device.show_battery_percentage,
+                    "show_battery_icon": (
+                        device.show_battery_icon and model.supports_battery_overlay
+                    ),
+                    "show_battery_percentage": (
+                        device.show_battery_percentage
+                        and model.supports_battery_overlay
+                    ),
                     "show_refresh_time": device.show_refresh_time,
                 }
                 specs.append(
@@ -105,7 +146,14 @@ def _build_job_specs() -> list[JobSpec]:
                         id=f"db_{schedule.id}",
                         name=f"{schedule.name} for {device.name}",
                         trigger=trigger,
-                        args=[schedule.type, client, device.device_id, params, overlay],
+                        args=[
+                            schedule.type,
+                            client,
+                            device.device_id,
+                            params,
+                            overlay,
+                            profile,
+                        ],
                     )
                 )
     return specs

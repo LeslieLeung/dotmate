@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, func, select
 
 from web.backend.db import get_session
+from web.backend.device_models import default_model_for_vendor
 from web.backend.models import ApiCredential, Device, DeviceStatusRecord, Settings
 from web.backend.status_worker import utc_now
 from web.backend.routes.auth import verify_token
@@ -28,6 +30,8 @@ from web.backend.vendors import create_vendor_client, get_vendor
 
 logger = logging.getLogger("dotmate.routes.api_keys")
 router = APIRouter(prefix="/api/api-keys", tags=["api-keys"])
+
+ValidationStatus = Literal["validated", "unverified", "invalid"]
 
 
 def _mask_key(api_key: str) -> str:
@@ -47,14 +51,23 @@ def _device_count(session: Session, credential_id: int) -> int:
 
 
 def credential_to_read(
-    session: Session, credential: ApiCredential
+    session: Session,
+    credential: ApiCredential,
+    *,
+    validation_status: ValidationStatus = "unverified",
 ) -> ApiCredentialRead:
+    try:
+        vendor_label = get_vendor(credential.vendor).label
+    except ValueError:
+        vendor_label = credential.vendor
     return ApiCredentialRead(
         id=credential.id,
         name=credential.name,
         vendor=credential.vendor,
+        vendor_label=vendor_label,
         masked_key=_mask_key(credential.api_key),
         device_count=_device_count(session, credential.id),
+        validation_status=validation_status,
     )
 
 
@@ -84,6 +97,7 @@ def _sync_devices(
 ) -> DeviceSyncStats:
     seen: set[str] = set()
     stats = DeviceSyncStats()
+    default_model = default_model_for_vendor(credential.vendor)
     for remote in remote_devices:
         remote_id = remote.id.strip()
         if not remote_id or remote_id in seen:
@@ -110,12 +124,14 @@ def _sync_devices(
             name=name,
             device_id=remote_id,
             api_credential_id=credential.id,
+            device_model=default_model.id,
         )
         session.add(device)
         session.flush()
-        session.add(
-            DeviceStatusRecord(device_id=device.id, next_refresh_at=utc_now())
-        )
+        if get_vendor(credential.vendor).supports_status:
+            session.add(
+                DeviceStatusRecord(device_id=device.id, next_refresh_at=utc_now())
+            )
         stats.created += 1
     return stats
 
@@ -147,8 +163,9 @@ def create_api_keys_batch(
         identity = (item.vendor, item.name)
         secret_identity = (item.vendor, item.api_key)
         error = None
+        vendor = None
         try:
-            get_vendor(item.vendor)
+            vendor = get_vendor(item.vendor)
         except ValueError:
             error = f"Unsupported vendor: {item.vendor}"
         if not error and identity in names_seen:
@@ -175,28 +192,39 @@ def create_api_keys_batch(
                     name=item.name,
                     vendor=item.vendor,
                     status="error",
+                    validation_status="invalid",
                     error=error,
                 )
             )
             continue
 
-        try:
-            client = create_vendor_client(item.vendor, item.api_key, interval)
-            remote_devices = client.list_devices()
-        except Exception as exc:
-            results.append(
-                ApiCredentialBatchResult(
-                    index=index,
-                    name=item.name,
-                    vendor=item.vendor,
-                    status="error",
-                    error=_upstream_message(exc),
+        remote_devices = None
+        validation_status: ValidationStatus = "unverified"
+        if vendor.supports_credential_validation or vendor.supports_device_discovery:
+            try:
+                client = create_vendor_client(item.vendor, item.api_key, interval)
+                if vendor.supports_device_discovery:
+                    remote_devices = client.list_devices()
+                    validation_status = "validated"
+                elif vendor.supports_credential_validation:
+                    # Reserved for vendors with a safe read-only check that is
+                    # not device discovery. MindReset validates via list_devices.
+                    validation_status = "validated"
+            except Exception as exc:
+                results.append(
+                    ApiCredentialBatchResult(
+                        index=index,
+                        name=item.name,
+                        vendor=item.vendor,
+                        status="error",
+                        validation_status="invalid",
+                        error=_upstream_message(exc),
+                    )
                 )
-            )
-            continue
-        candidates.append((index, item, remote_devices))
+                continue
+        candidates.append((index, item, remote_devices, validation_status))
 
-    for index, item, remote_devices in candidates:
+    for index, item, remote_devices, validation_status in candidates:
         credential = ApiCredential(
             name=item.name,
             vendor=item.vendor,
@@ -204,7 +232,9 @@ def create_api_keys_batch(
         )
         session.add(credential)
         session.flush()
-        stats = _sync_devices(session, credential, remote_devices)
+        stats = None
+        if remote_devices is not None:
+            stats = _sync_devices(session, credential, remote_devices)
         session.flush()
         results.append(
             ApiCredentialBatchResult(
@@ -212,8 +242,11 @@ def create_api_keys_batch(
                 name=item.name,
                 vendor=item.vendor,
                 status="success",
-                credential=credential_to_read(session, credential),
+                credential=credential_to_read(
+                    session, credential, validation_status=validation_status
+                ),
                 sync=stats,
+                validation_status=validation_status,
             )
         )
 
@@ -229,6 +262,12 @@ def create_api_keys_batch(
 
 
 def _sync_one(session: Session, credential: ApiCredential) -> ApiCredentialSyncResult:
+    vendor = get_vendor(credential.vendor)
+    if not vendor.supports_device_discovery:
+        raise HTTPException(
+            422,
+            f"Vendor '{credential.vendor}' does not support device discovery",
+        )
     try:
         client = create_vendor_client(
             credential.vendor, credential.api_key, _request_interval(session)
@@ -237,11 +276,16 @@ def _sync_one(session: Session, credential: ApiCredential) -> ApiCredentialSyncR
         stats = _sync_devices(session, credential, remote_devices)
         session.commit()
         session.refresh(credential)
+    except HTTPException:
+        raise
     except Exception as exc:
         session.rollback()
         raise HTTPException(502, _upstream_message(exc)) from exc
     return ApiCredentialSyncResult(
-        credential=credential_to_read(session, credential), sync=stats
+        credential=credential_to_read(
+            session, credential, validation_status="validated"
+        ),
+        sync=stats,
     )
 
 
@@ -254,6 +298,34 @@ def sync_all_api_keys(
     credentials = session.exec(select(ApiCredential).order_by(ApiCredential.id)).all()
     for index, credential in enumerate(credentials):
         try:
+            vendor = get_vendor(credential.vendor)
+        except ValueError:
+            results.append(
+                ApiCredentialBatchResult(
+                    index=index,
+                    name=credential.name,
+                    vendor=credential.vendor,
+                    status="error",
+                    error=f"Unsupported vendor: {credential.vendor}",
+                )
+            )
+            continue
+        if not vendor.supports_device_discovery:
+            results.append(
+                ApiCredentialBatchResult(
+                    index=index,
+                    name=credential.name,
+                    vendor=credential.vendor,
+                    status="success",
+                    credential=credential_to_read(session, credential),
+                    sync=DeviceSyncStats(),
+                    validation_status="unverified",
+                    error=None,
+                )
+            )
+            # Annotate skipped discovery for clients via empty sync stats.
+            continue
+        try:
             synced = _sync_one(session, credential)
             results.append(
                 ApiCredentialBatchResult(
@@ -263,6 +335,7 @@ def sync_all_api_keys(
                     status="success",
                     credential=synced.credential,
                     sync=synced.sync,
+                    validation_status="validated",
                 )
             )
         except HTTPException as exc:

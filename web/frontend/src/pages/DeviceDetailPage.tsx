@@ -13,7 +13,6 @@ import {
   ApiError,
   devicesApi,
   schedulesApi,
-  schemaApi,
   type Device,
   type Schedule,
   type ScheduleTypeSchema,
@@ -157,10 +156,8 @@ export function DeviceDetailPage() {
   const loadData = useCallback(async () => {
     setLoadFailed(false);
     try {
-      const [deviceData, schemaData] = await Promise.all([
-        devicesApi.get(deviceId),
-        schemaApi.getScheduleTypes(),
-      ]);
+      const deviceData = await devicesApi.get(deviceId);
+      const schemaData = await devicesApi.scheduleTypes(deviceId);
       setDevice(deviceData);
       setSchema(schemaData);
     } catch {
@@ -429,7 +426,8 @@ export function DeviceDetailPage() {
             {device.device_id}
           </p>
           <p className="text-sm text-muted-foreground">
-            {device.vendor} · {device.api_credential_name}
+            {device.vendor_label || device.vendor} · {device.device_model_label} ·{" "}
+            {device.display_width}×{device.display_height} · {device.api_credential_name}
           </p>
         </div>
       </div>

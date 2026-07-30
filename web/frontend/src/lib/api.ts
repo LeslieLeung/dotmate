@@ -72,7 +72,13 @@ export interface Device {
   api_credential_id: number;
   api_credential_name: string;
   vendor: string;
+  vendor_label: string;
   vendor_capabilities: string[];
+  device_model: string;
+  device_model_label: string;
+  display_width: number;
+  display_height: number;
+  display_capabilities: string[];
   show_battery_icon: boolean;
   show_battery_percentage: boolean;
   show_refresh_time: boolean;
@@ -137,15 +143,37 @@ export interface Settings {
 export interface Vendor {
   id: string;
   label: string;
+  description: string;
   capabilities: string[];
+  credential_hint: string;
+  supports_credential_validation: boolean;
+  supports_device_discovery: boolean;
+}
+
+export interface DeviceModel {
+  id: string;
+  vendor_id: string;
+  label: string;
+  description: string;
+  width: number;
+  height: number;
+  supports_text: boolean;
+  supports_image: boolean;
+  supports_battery_overlay: boolean;
+  supports_page_id: boolean;
+  device_id_label: string;
+  device_id_example: string;
+  display_capabilities: string[];
 }
 
 export interface ApiCredential {
   id: number;
   name: string;
   vendor: string;
+  vendor_label: string;
   masked_key: string;
   device_count: number;
+  validation_status: "validated" | "unverified" | "invalid";
 }
 
 export interface DeviceSyncStats {
@@ -162,6 +190,7 @@ export interface ApiCredentialBatchResult {
   status: "success" | "error";
   credential?: ApiCredential;
   sync?: DeviceSyncStats;
+  validation_status?: "validated" | "unverified" | "invalid";
   error?: string;
 }
 
@@ -237,6 +266,7 @@ export const devicesApi = {
     name: string;
     device_id: string;
     api_credential_id: number;
+    device_model: string;
     show_battery_icon?: boolean;
     show_battery_percentage?: boolean;
     show_refresh_time?: boolean;
@@ -244,6 +274,8 @@ export const devicesApi = {
   update: (id: number, data: Partial<Device>) =>
     request<Device>(`/devices/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: number) => request<void>(`/devices/${id}`, { method: "DELETE" }),
+  scheduleTypes: (id: number) =>
+    request<ScheduleTypeSchema>(`/devices/${id}/schedule-types`),
   remoteSettings: (id: number) =>
     request<RemoteDeviceSettings>(`/devices/${id}/remote/settings`),
   updateRemoteSettings: (id: number, data: Partial<RemoteDeviceSettings>) =>
@@ -276,6 +308,15 @@ export const devicesApi = {
 
 export const vendorsApi = {
   list: () => request<Vendor[]>("/vendors"),
+};
+
+export const deviceModelsApi = {
+  list: (vendor?: string) =>
+    request<DeviceModel[]>(
+      vendor
+        ? `/device-models?vendor=${encodeURIComponent(vendor)}`
+        : "/device-models"
+    ),
 };
 
 export const apiKeysApi = {

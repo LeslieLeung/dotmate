@@ -8,6 +8,10 @@ from pydantic import ValidationError
 from sqlmodel import Session, select
 
 from dotmate.api.api import DeviceIntervalSettings, DeviceSettingsUpdate
+from web.backend.device_models import (
+    assert_model_matches_vendor,
+    get_device_model,
+)
 from web.backend.db import get_session
 from web.backend.models import (
     ApiCredential,
@@ -37,9 +41,10 @@ from web.backend.routes.auth import verify_token
 from web.backend.scheduler import reload_scheduler
 from web.backend.schedule_types import (
     build_summary,
+    get_schedule_type_schema,
     get_type_label,
     is_web_editable,
-    validate_params,
+    validate_params_for_device,
     validation_errors,
 )
 from web.backend.vendors import create_vendor_client, get_vendor
@@ -59,7 +64,9 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=timezone.utc)
 
 
-def _schedule_to_read(s: Schedule) -> ScheduleRead:
+def _schedule_to_read(
+    s: Schedule, device_model: str | None = None
+) -> ScheduleRead:
     try:
         params = json.loads(s.params) if s.params else None
     except json.JSONDecodeError:
@@ -72,11 +79,13 @@ def _schedule_to_read(s: Schedule) -> ScheduleRead:
         type=s.type,
         type_label=get_type_label(s.type),
         params=params,
-        summary=build_summary(s.type, params),
+        summary=build_summary(s.type, params, device_model),
     )
 
 
-def _validate_schedule_params(type_name: str, params: dict | None) -> dict:
+def _validate_schedule_params(
+    type_name: str, params: dict | None, device_model: str
+) -> dict:
     if not is_web_editable(type_name):
         raise HTTPException(
             422,
@@ -86,7 +95,7 @@ def _validate_schedule_params(type_name: str, params: dict | None) -> dict:
             },
         )
     try:
-        return validate_params(type_name, params)
+        return validate_params_for_device(type_name, params, device_model)
     except ValidationError as exc:
         raise HTTPException(
             422,
@@ -95,7 +104,24 @@ def _validate_schedule_params(type_name: str, params: dict | None) -> dict:
                 "fields": validation_errors(exc),
             },
         )
-    except (KeyError, ValueError):
+    except ValueError as exc:
+        fields = getattr(exc, "fields", None)
+        if fields:
+            raise HTTPException(
+                422,
+                detail={
+                    "message": "Check the highlighted schedule parameters",
+                    "fields": fields,
+                },
+            ) from exc
+        raise HTTPException(
+            422,
+            detail={
+                "message": "Unknown schedule type",
+                "fields": {"type": "Choose a supported schedule type"},
+            },
+        ) from exc
+    except KeyError:
         raise HTTPException(
             422,
             detail={
@@ -105,12 +131,31 @@ def _validate_schedule_params(type_name: str, params: dict | None) -> dict:
         )
 
 
+def _normalize_overlays(
+    model,
+    *,
+    show_battery_icon: bool,
+    show_battery_percentage: bool,
+    show_refresh_time: bool,
+) -> tuple[bool, bool, bool]:
+    if not model.supports_battery_overlay:
+        return False, False, show_refresh_time
+    return show_battery_icon, show_battery_percentage, show_refresh_time
+
+
 def _device_to_read(
     session: Session, d: Device, schedules: list[Schedule]
 ) -> DeviceRead:
     credential = session.get(ApiCredential, d.api_credential_id)
     status_record = session.get(DeviceStatusRecord, d.id)
     remote_status, status_policy = _status_to_read(status_record)
+    vendor = get_vendor(credential.vendor)
+    try:
+        model = get_device_model(d.device_model)
+    except ValueError as exc:
+        raise HTTPException(
+            422, f"Device has an unsupported device model: {d.device_model}"
+        ) from exc
     return DeviceRead(
         id=d.id,
         name=d.name,
@@ -118,13 +163,19 @@ def _device_to_read(
         api_credential_id=d.api_credential_id,
         api_credential_name=credential.name,
         vendor=credential.vendor,
-        vendor_capabilities=list(get_vendor(credential.vendor).capabilities),
+        vendor_label=vendor.label,
+        vendor_capabilities=list(vendor.capabilities),
+        device_model=model.id,
+        device_model_label=model.label,
+        display_width=model.width,
+        display_height=model.height,
+        display_capabilities=list(model.display_capabilities),
         show_battery_icon=d.show_battery_icon,
         show_battery_percentage=d.show_battery_percentage,
         show_refresh_time=d.show_refresh_time,
         remote_status=remote_status,
         status_policy=status_policy,
-        schedules=[_schedule_to_read(s) for s in schedules],
+        schedules=[_schedule_to_read(s, model.id) for s in schedules],
     )
 
 
@@ -226,6 +277,10 @@ def create_device(
     credential = session.get(ApiCredential, body.api_credential_id)
     if not credential:
         raise HTTPException(422, "Choose a valid API credential")
+    try:
+        model = assert_model_matches_vendor(body.device_model, credential.vendor)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     duplicate = session.exec(
         select(Device)
         .join(ApiCredential)
@@ -236,15 +291,31 @@ def create_device(
     ).first()
     if duplicate:
         raise HTTPException(409, "This device already exists for the selected vendor")
-    device = Device(**body.model_dump())
+    battery_icon, battery_percent, refresh_time = _normalize_overlays(
+        model,
+        show_battery_icon=body.show_battery_icon,
+        show_battery_percentage=body.show_battery_percentage,
+        show_refresh_time=body.show_refresh_time,
+    )
+    device = Device(
+        name=body.name,
+        device_id=body.device_id,
+        api_credential_id=body.api_credential_id,
+        device_model=model.id,
+        show_battery_icon=battery_icon,
+        show_battery_percentage=battery_percent,
+        show_refresh_time=refresh_time,
+    )
     session.add(device)
     session.flush()
-    session.add(
-        DeviceStatusRecord(device_id=device.id, next_refresh_at=utc_now())
-    )
+    if "status" in get_vendor(credential.vendor).capabilities:
+        session.add(
+            DeviceStatusRecord(device_id=device.id, next_refresh_at=utc_now())
+        )
     session.commit()
     session.refresh(device)
-    request_status_refresh([device.id])
+    if "status" in get_vendor(credential.vendor).capabilities:
+        request_status_refresh([device.id])
     return _device_to_read(session, device, [])
 
 
@@ -286,6 +357,10 @@ def update_device(
         raise HTTPException(
             422, "A device can only be reassigned within the same vendor"
         )
+    try:
+        model = assert_model_matches_vendor(device.device_model, next_credential.vendor)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
     next_device_id = body.device_id or device.device_id
     duplicate = session.exec(
         select(Device)
@@ -302,6 +377,7 @@ def update_device(
         "name": device.name,
         "device_id": device.device_id,
         "api_credential_id": device.api_credential_id,
+        "device_model": device.device_model,
         "show_battery_icon": device.show_battery_icon,
         "show_battery_percentage": device.show_battery_percentage,
         "show_refresh_time": device.show_refresh_time,
@@ -310,8 +386,18 @@ def update_device(
         next_device_id != device.device_id
         or next_credential_id != device.api_credential_id
     )
-    for k, v in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    for k, v in updates.items():
         setattr(device, k, v)
+    battery_icon, battery_percent, refresh_time = _normalize_overlays(
+        model,
+        show_battery_icon=device.show_battery_icon,
+        show_battery_percentage=device.show_battery_percentage,
+        show_refresh_time=device.show_refresh_time,
+    )
+    device.show_battery_icon = battery_icon
+    device.show_battery_percentage = battery_percent
+    device.show_refresh_time = refresh_time
     session.add(device)
     session.commit()
     session.refresh(device)
@@ -342,7 +428,8 @@ def update_device(
         record.next_refresh_at = utc_now()
         session.add(record)
         session.commit()
-        request_status_refresh([device.id])
+        if "status" in get_vendor(next_credential.vendor).capabilities:
+            request_status_refresh([device.id])
     return _device_to_read(session, device, schedules)
 
 
@@ -363,6 +450,7 @@ def delete_device(
         name=device.name,
         device_id=device.device_id,
         api_credential_id=device.api_credential_id,
+        device_model=device.device_model,
         show_battery_icon=device.show_battery_icon,
         show_battery_percentage=device.show_battery_percentage,
         show_refresh_time=device.show_refresh_time,
@@ -644,6 +732,18 @@ def list_remote_content(
 # ── Schedule CRUD (nested under device) ───────────────────
 
 
+@router.get("/{device_id}/schedule-types")
+def get_device_schedule_types(
+    device_id: int,
+    session: Session = Depends(get_session),
+    _=Depends(verify_token),
+) -> dict:
+    device = session.get(Device, device_id)
+    if not device:
+        raise HTTPException(404, "Device not found")
+    return get_schedule_type_schema(device.device_model)
+
+
 @router.get("/{device_id}/schedules", response_model=list[ScheduleRead])
 def list_schedules(
     device_id: int,
@@ -656,7 +756,7 @@ def list_schedules(
     schedules = session.exec(
         select(Schedule).where(Schedule.device_id == device_id)
     ).all()
-    return [_schedule_to_read(s) for s in schedules]
+    return [_schedule_to_read(s, device.device_model) for s in schedules]
 
 
 @router.post("/{device_id}/schedules", response_model=ScheduleRead, status_code=201)
@@ -669,7 +769,7 @@ def create_schedule(
     device = session.get(Device, device_id)
     if not device:
         raise HTTPException(404, "Device not found")
-    params = _validate_schedule_params(body.type, body.params)
+    params = _validate_schedule_params(body.type, body.params, device.device_model)
     params_json = json.dumps(params) if params else None
     schedule = Schedule(
         device_id=device_id,
@@ -691,7 +791,7 @@ def create_schedule(
         session.delete(schedule)
         session.commit()
         raise HTTPException(500, "Scheduler reload failed; schedule not saved")
-    return _schedule_to_read(schedule)
+    return _schedule_to_read(schedule, device.device_model)
 
 
 @router.put("/schedules/{schedule_id}", response_model=ScheduleRead)
@@ -704,6 +804,9 @@ def update_schedule(
     schedule = session.get(Schedule, schedule_id)
     if not schedule:
         raise HTTPException(404, "Schedule not found")
+    device = session.get(Device, schedule.device_id)
+    if not device:
+        raise HTTPException(404, "Device not found")
     previous = (schedule.name, schedule.cron, schedule.type, schedule.params)
     fields_set = body.model_fields_set
     effective_type = body.type if "type" in fields_set else schedule.type
@@ -726,10 +829,14 @@ def update_schedule(
     effective_params = body.params if "params" in fields_set else current_params
 
     if is_web_editable(effective_type):
-        normalized_params = _validate_schedule_params(effective_type, effective_params)
+        normalized_params = _validate_schedule_params(
+            effective_type, effective_params, device.device_model
+        )
     else:
         if "type" in fields_set or "params" in fields_set:
-            _validate_schedule_params(effective_type, effective_params)
+            _validate_schedule_params(
+                effective_type, effective_params, device.device_model
+            )
         normalized_params = current_params
 
     if "name" in fields_set:
@@ -753,7 +860,7 @@ def update_schedule(
         session.add(schedule)
         session.commit()
         raise HTTPException(500, "Scheduler reload failed; schedule not updated")
-    return _schedule_to_read(schedule)
+    return _schedule_to_read(schedule, device.device_model)
 
 
 @router.delete("/schedules/{schedule_id}", status_code=204)

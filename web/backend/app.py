@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from web.backend.db import init_db
-from web.backend.routes import api_keys, auth, devices, settings, schema, vendors
+from web.backend.routes import api_keys, auth, device_models, devices, settings, schema, vendors
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ app.add_middleware(
 # API routes
 app.include_router(auth.router)
 app.include_router(vendors.router)
+app.include_router(device_models.router)
 app.include_router(api_keys.router)
 app.include_router(devices.router)
 app.include_router(settings.router)

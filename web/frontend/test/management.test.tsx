@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   createBatch: vi.fn(),
   listVendors: vi.fn(),
   listDevices: vi.fn(),
+  listDeviceModels: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -23,6 +24,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
       createBatch: mocks.createBatch,
     },
     vendorsApi: { list: mocks.listVendors },
+    deviceModelsApi: { list: mocks.listDeviceModels },
     devicesApi: { ...actual.devicesApi, list: mocks.listDevices },
   };
 });
@@ -30,20 +32,83 @@ vi.mock("@/lib/api", async (importOriginal) => {
 import { DevicesPage } from "@/pages/DevicesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-const vendor = { id: "mindreset", label: "MindReset", capabilities: ["devices"] };
+const vendor = {
+  id: "mindreset",
+  label: "MindReset",
+  description: "MindReset Open API",
+  capabilities: ["devices"],
+  credential_hint: "Paste your MindReset key",
+  supports_credential_validation: true,
+  supports_device_discovery: true,
+};
+
+const quote0Model = {
+  id: "quote0",
+  vendor_id: "mindreset",
+  label: "Quote/0",
+  description: "MindReset Quote/0",
+  width: 296,
+  height: 152,
+  supports_text: true,
+  supports_image: true,
+  supports_battery_overlay: true,
+  supports_page_id: false,
+  device_id_label: "Device ID",
+  device_id_example: "device-xxxxxxxx",
+  display_capabilities: ["text", "image", "battery_overlay", "refresh_time_overlay"],
+};
+
 const credential = {
   id: 1,
   name: "Personal",
   vendor: "mindreset",
+  vendor_label: "MindReset",
   masked_key: "abcd••••wxyz",
   device_count: 1,
+  validation_status: "validated" as const,
 };
+
+function makeDevice(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    name: "Desk",
+    device_id: "desk-1",
+    vendor: "mindreset",
+    vendor_label: "MindReset",
+    vendor_capabilities: ["devices"],
+    device_model: "quote0",
+    device_model_label: "Quote/0",
+    display_width: 296,
+    display_height: 152,
+    display_capabilities: ["text", "image", "battery_overlay", "refresh_time_overlay"],
+    api_credential_id: 1,
+    api_credential_name: "Personal",
+    show_battery_icon: false,
+    show_battery_percentage: false,
+    show_refresh_time: false,
+    remote_status: null,
+    status_policy: {
+      refresh_interval_minutes: null,
+      effective_interval_minutes: null,
+      interval_source: null,
+      state: "pending",
+      last_attempt_at: null,
+      last_success_at: null,
+      next_refresh_at: null,
+      last_error: null,
+      refresh_requested_at: null,
+    },
+    schedules: [],
+    ...overrides,
+  };
+}
 
 describe("multi-vendor management", () => {
   beforeEach(() => {
     mocks.getSettings.mockResolvedValue({ request_interval: 1 });
     mocks.listKeys.mockResolvedValue([credential]);
     mocks.listVendors.mockResolvedValue([vendor]);
+    mocks.listDeviceModels.mockResolvedValue([quote0Model]);
     mocks.createBatch.mockResolvedValue({
       results: [
         { index: 0, name: "One", vendor: "mindreset", status: "success", sync: { fetched: 0, created: 0, linked: 0, duplicates: 0 } },
@@ -79,8 +144,14 @@ describe("multi-vendor management", () => {
       { ...credential, id: 2, name: "Work", masked_key: "work••••key2" },
     ]);
     mocks.listDevices.mockResolvedValue([
-      { id: 1, name: "Desk", device_id: "desk-1", vendor: "mindreset", vendor_capabilities: ["devices"], api_credential_id: 1, api_credential_name: "Personal", show_battery_icon: false, show_battery_percentage: false, show_refresh_time: false, schedules: [] },
-      { id: 2, name: "Office", device_id: "office-1", vendor: "mindreset", vendor_capabilities: ["devices"], api_credential_id: 2, api_credential_name: "Work", show_battery_icon: false, show_battery_percentage: false, show_refresh_time: false, schedules: [] },
+      makeDevice(),
+      makeDevice({
+        id: 2,
+        name: "Office",
+        device_id: "office-1",
+        api_credential_id: 2,
+        api_credential_name: "Work",
+      }),
     ]);
     render(<MemoryRouter initialEntries={["/devices?api_key_id=2"]}><DevicesPage /></MemoryRouter>);
     expect(await screen.findByText("Office")).toBeInTheDocument();
@@ -89,17 +160,8 @@ describe("multi-vendor management", () => {
 
   it("shows the latest cached status without calling the vendor", async () => {
     mocks.listDevices.mockResolvedValue([
-      {
-        id: 1,
-        name: "Desk",
-        device_id: "desk-1",
-        vendor: "mindreset",
+      makeDevice({
         vendor_capabilities: ["devices", "status"],
-        api_credential_id: 1,
-        api_credential_name: "Personal",
-        show_battery_icon: false,
-        show_battery_percentage: false,
-        show_refresh_time: false,
         remote_status: {
           remote_device_id: "desk-1",
           alias: "Desk",
@@ -127,8 +189,7 @@ describe("multi-vendor management", () => {
           last_error: null,
           refresh_requested_at: null,
         },
-        schedules: [],
-      },
+      }),
     ]);
 
     render(<MemoryRouter><DevicesPage /></MemoryRouter>);
@@ -136,5 +197,7 @@ describe("multi-vendor management", () => {
     expect(await screen.findByText("Power Active")).toBeInTheDocument();
     expect(screen.getByText("Charging · -62 dBm")).toBeInTheDocument();
     expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.getAllByText("Quote/0").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("296×152").length).toBeGreaterThan(0);
   });
 });
