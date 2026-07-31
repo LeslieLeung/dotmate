@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   CalendarClock,
   Pencil,
+  Play,
   Plus,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 import {
   ApiError,
@@ -90,6 +92,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  scheduleFieldLabel,
+  scheduleTypeDescription,
+  scheduleTypeLabel,
+} from "@/i18n/metadata";
 
 type DiscardAction = "close" | "type" | null;
 
@@ -116,7 +123,18 @@ function draftsEqual(left: FormDraft, right: FormDraft) {
   );
 }
 
+function isPortaledOverlayTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest('[data-slot="select-content"]') ||
+      target.closest('[data-slot="alert-dialog-content"]') ||
+      target.closest('[role="listbox"]') ||
+      target.closest('[role="alertdialog"]')
+  );
+}
+
 export function DeviceDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const deviceId = Number(id);
@@ -129,9 +147,11 @@ export function DeviceDetailPage() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Schedule | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [runningScheduleId, setRunningScheduleId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [discardAction, setDiscardAction] = useState<DiscardAction>(null);
   const [pendingType, setPendingType] = useState<string | null>(null);
+  const suppressSheetCloseRef = useRef(false);
 
   const [formName, setFormName] = useState("");
   const [formCron, setFormCron] = useState("");
@@ -218,8 +238,15 @@ export function DeviceDetailPage() {
     setPendingType(null);
   }
 
+  function suppressNextSheetClose() {
+    suppressSheetCloseRef.current = true;
+    window.setTimeout(() => {
+      suppressSheetCloseRef.current = false;
+    }, 0);
+  }
+
   function requestSheetClose() {
-    if (saving) return;
+    if (saving || discardAction || suppressSheetCloseRef.current) return;
     if (formChanged) setDiscardAction("close");
     else closeSheet();
   }
@@ -243,6 +270,7 @@ export function DeviceDetailPage() {
       formType &&
       !valuesEqual(normalizeParams(formParams), normalizeParams(defaultParams))
     ) {
+      suppressNextSheetClose();
       setPendingType(nextType);
       setDiscardAction("type");
       return;
@@ -250,19 +278,27 @@ export function DeviceDetailPage() {
     applyType(nextType);
   }
 
+  function dismissDiscardDialog() {
+    suppressNextSheetClose();
+    setDiscardAction(null);
+    setPendingType(null);
+  }
+
   function validateForm() {
     const errors: Record<string, string> = {};
-    if (!formName.trim()) errors.name = "Name is required";
-    if (!formCron.trim()) errors.cron = "Cron expression is required";
+    if (!formName.trim()) errors.name = t("schedules.nameRequired");
+    if (!formCron.trim()) errors.cron = t("schedules.cronRequired");
     else if (formCron.trim().split(/\s+/).length !== 5) {
-      errors.cron = "Enter a five-part cron expression";
+      errors.cron = t("schedules.cronParts");
     }
-    if (!formType) errors.type = "Schedule type is required";
+    if (!formType) errors.type = t("schedules.typeRequired");
     if (selectedDefinition) {
       for (const [key, field] of Object.entries(selectedDefinition.fields)) {
         const value = formParams[key];
         if (field.required && (value === undefined || value === null || value === "")) {
-          errors[key] = `${field.label} is required`;
+          errors[key] = t("schedules.fieldRequired", {
+            field: scheduleFieldLabel(t, formType, key, field),
+          });
         }
       }
     }
@@ -291,7 +327,7 @@ export function DeviceDetailPage() {
               params: formParams,
             };
         await schedulesApi.update(editingSchedule.id, update);
-        toast.success("Schedule updated");
+        toast.success(t("schedules.updated"));
       } else {
         await schedulesApi.create(deviceId, {
           name: formName.trim(),
@@ -299,19 +335,23 @@ export function DeviceDetailPage() {
           type: formType,
           params: formParams,
         });
-        toast.success("Schedule created");
+        toast.success(t("schedules.created"));
       }
       closeSheet();
       await loadData();
     } catch (error) {
       if (error instanceof ApiError) {
-        setFormErrors(error.fieldErrors);
+        const fieldErrors = { ...error.fieldErrors };
+        if (error.message && !fieldErrors.cron) {
+          fieldErrors.cron = error.message;
+        }
+        setFormErrors(fieldErrors);
         toast.error(error.message);
         window.setTimeout(() => {
           document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
         });
       } else {
-        toast.error("Failed to save schedule");
+        toast.error(t("schedules.saveFailed"));
       }
     } finally {
       setSaving(false);
@@ -323,13 +363,26 @@ export function DeviceDetailPage() {
     setDeleting(true);
     try {
       await schedulesApi.delete(deleteConfirm.id);
-      toast.success("Schedule deleted");
+      toast.success(t("schedules.deleted"));
       setDeleteConfirm(null);
       await loadData();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete schedule");
+      toast.error(error instanceof Error ? error.message : t("schedules.deleteFailed"));
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleRun(schedule: Schedule) {
+    if (runningScheduleId !== null) return;
+    setRunningScheduleId(schedule.id);
+    try {
+      await schedulesApi.run(schedule.id);
+      toast.success(t("schedules.pushed"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("schedules.pushFailed"));
+    } finally {
+      setRunningScheduleId(null);
     }
   }
 
@@ -351,18 +404,19 @@ export function DeviceDetailPage() {
       <Empty className="min-h-80 border">
         <EmptyHeader>
           <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
-          <EmptyTitle>Unable to load this device</EmptyTitle>
-          <EmptyDescription>Check the server connection and try again.</EmptyDescription>
+          <EmptyTitle>{t("schedules.unableToLoadDevice")}</EmptyTitle>
+          <EmptyDescription>{t("auth.connectionHint")}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button onClick={() => void loadData()}>Try Again</Button>
-          <Button variant="ghost" onClick={() => navigate("/devices")}>Back to Devices</Button>
+          <Button onClick={() => void loadData()}>{t("common.tryAgain")}</Button>
+          <Button variant="ghost" onClick={() => navigate("/devices")}>{t("schedules.backToDevices")}</Button>
         </EmptyContent>
       </Empty>
     );
   }
 
   function renderActions(schedule: Schedule) {
+    const isRunning = runningScheduleId === schedule.id;
     return (
       <div className="flex justify-end gap-1">
         <Tooltip>
@@ -370,26 +424,42 @@ export function DeviceDetailPage() {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Edit ${schedule.name}`}
-              onClick={() => openEditSheet(schedule)}
+              aria-label={t("schedules.runAria", { name: schedule.name })}
+              onClick={() => void handleRun(schedule)}
+              disabled={runningScheduleId !== null}
             >
-              <Pencil />
+              {isRunning ? <Spinner /> : <Play />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Edit schedule</TooltipContent>
+          <TooltipContent>{t("schedules.runNow")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label={`Delete ${schedule.name}`}
+              aria-label={t("schedules.editAria", { name: schedule.name })}
+              onClick={() => openEditSheet(schedule)}
+              disabled={runningScheduleId !== null}
+            >
+              <Pencil />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("schedules.editAction")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("schedules.deleteAria", { name: schedule.name })}
               onClick={() => setDeleteConfirm(schedule)}
+              disabled={runningScheduleId !== null}
             >
               <Trash2 />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Delete schedule</TooltipContent>
+          <TooltipContent>{t("schedules.deleteAction")}</TooltipContent>
         </Tooltip>
       </div>
     );
@@ -401,8 +471,16 @@ export function DeviceDetailPage() {
       <dl className="flex flex-col gap-1">
         {schedule.summary.map((item) => (
           <div key={item.label} className="flex min-w-0 gap-1 text-sm">
-            <dt className="text-muted-foreground">{item.label}:</dt>
-            <dd className="truncate">{item.value}</dd>
+            <dt className="text-muted-foreground">
+              {item.field
+                ? t(`metadata.fields.${item.field}.label`, { defaultValue: item.label })
+                : item.label}:
+            </dt>
+            <dd className="truncate">
+              {item.field === "page_id" && item.raw_value !== undefined
+                ? t("metadata.page", { value: item.raw_value })
+                : item.value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -415,7 +493,7 @@ export function DeviceDetailPage() {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Back to devices"
+          aria-label={t("schedules.backAria")}
           onClick={() => navigate("/devices")}
         >
           <ArrowLeft />
@@ -438,14 +516,14 @@ export function DeviceDetailPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-medium">Dotmate schedules</h2>
+          <h2 className="text-lg font-medium">{t("schedules.title")}</h2>
           <p className="text-sm text-muted-foreground">
-            {scheduleCount} {scheduleCount === 1 ? "schedule" : "schedules"} configured
+            {t("schedules.count", { count: scheduleCount })}
           </p>
         </div>
         <Button onClick={openCreateSheet}>
           <Plus data-icon="inline-start" />
-          Add Schedule
+          {t("schedules.add")}
         </Button>
       </div>
 
@@ -455,13 +533,13 @@ export function DeviceDetailPage() {
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
-                <EmptyTitle>No schedules yet</EmptyTitle>
-                <EmptyDescription>Create a schedule to start sending content automatically.</EmptyDescription>
+                <EmptyTitle>{t("schedules.emptyTitle")}</EmptyTitle>
+                <EmptyDescription>{t("schedules.emptyDescription")}</EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button onClick={openCreateSheet}>
                   <Plus data-icon="inline-start" />
-                  Add Schedule
+                  {t("schedules.add")}
                 </Button>
               </EmptyContent>
             </Empty>
@@ -471,18 +549,18 @@ export function DeviceDetailPage() {
         <>
           <Card className="hidden md:block">
             <CardHeader>
-              <CardTitle>Configured schedules</CardTitle>
-              <CardDescription>Names and safe summaries for this device.</CardDescription>
+              <CardTitle>{t("schedules.configured")}</CardTitle>
+              <CardDescription>{t("schedules.configuredDescription")}</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead>Summary</TableHead>
-                    <TableHead className="w-24 text-right">Actions</TableHead>
+                    <TableHead>{t("common.name")}</TableHead>
+                    <TableHead>{t("common.type")}</TableHead>
+                    <TableHead>{t("schedules.schedule")}</TableHead>
+                    <TableHead>{t("common.summary")}</TableHead>
+                    <TableHead className="w-32 text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -491,7 +569,7 @@ export function DeviceDetailPage() {
                       <TableCell className="font-medium">{schedule.name}</TableCell>
                       <TableCell>
                         <div className="flex min-w-0 flex-col gap-0.5">
-                          <span className="truncate text-sm font-medium">{schedule.type_label}</span>
+                          <span className="truncate text-sm font-medium">{scheduleTypeLabel(t, schedule.type, schedule.type_label)}</span>
                           <code className="truncate text-xs text-muted-foreground">{schedule.type}</code>
                         </div>
                       </TableCell>
@@ -512,14 +590,14 @@ export function DeviceDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <CardTitle className="truncate">{schedule.name}</CardTitle>
-                      <CardDescription>{schedule.type_label}</CardDescription>
+                      <CardDescription>{scheduleTypeLabel(t, schedule.type, schedule.type_label)}</CardDescription>
                     </div>
                     {renderActions(schedule)}
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   <div>
-                    <p className="text-xs text-muted-foreground">Schedule</p>
+                    <p className="text-xs text-muted-foreground">{t("schedules.schedule")}</p>
                     <code className="text-sm">{schedule.cron || "—"}</code>
                   </div>
                   {renderSummary(schedule)}
@@ -530,14 +608,35 @@ export function DeviceDetailPage() {
         </>
       )}
 
-      <Sheet open={sheetOpen} onOpenChange={(open) => !open && requestSheetClose()}>
-        <SheetContent className="w-full gap-0 sm:max-w-xl" showCloseButton={!saving}>
+      <Sheet
+        open={sheetOpen}
+        onOpenChange={(open) => {
+          if (!open) requestSheetClose();
+        }}
+      >
+        <SheetContent
+          className="w-full gap-0 sm:max-w-xl"
+          showCloseButton={!saving}
+          onPointerDownOutside={(event) => {
+            if (isPortaledOverlayTarget(event.target)) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (isPortaledOverlayTarget(event.target) || discardAction) {
+              event.preventDefault();
+            }
+          }}
+          onFocusOutside={(event) => {
+            if (isPortaledOverlayTarget(event.target) || discardAction) {
+              event.preventDefault();
+            }
+          }}
+        >
           <SheetHeader>
-            <SheetTitle>{editingSchedule ? "Edit Schedule" : "Add Schedule"}</SheetTitle>
+            <SheetTitle>{editingSchedule ? t("schedules.edit") : t("schedules.add")}</SheetTitle>
             <SheetDescription>
               {editingSchedule
-                ? "Update when this task runs and what it displays."
-                : "Create a named task for this device."}
+                ? t("schedules.editDescription")
+                : t("schedules.addDescription")}
             </SheetDescription>
           </SheetHeader>
           <Separator />
@@ -545,7 +644,7 @@ export function DeviceDetailPage() {
           <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
             <FieldGroup>
               <Field data-invalid={Boolean(formErrors.name)}>
-                <FieldLabel htmlFor="schedule-name">Name*</FieldLabel>
+                <FieldLabel htmlFor="schedule-name">{t("common.name")}*</FieldLabel>
                 <Input
                   id="schedule-name"
                   value={formName}
@@ -553,17 +652,17 @@ export function DeviceDetailPage() {
                     setFormName(event.target.value);
                     clearFieldErrors(["name"]);
                   }}
-                  placeholder="e.g. Morning status"
+                  placeholder={t("schedules.namePlaceholder")}
                   aria-invalid={Boolean(formErrors.name)}
                   disabled={saving}
                   autoFocus
                 />
-                <FieldDescription>Use a short name that is easy to scan in the list.</FieldDescription>
+                <FieldDescription>{t("schedules.nameHint")}</FieldDescription>
                 <FieldError>{formErrors.name}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(formErrors.cron)}>
-                <FieldLabel htmlFor="schedule-cron">Cron Expression*</FieldLabel>
+                <FieldLabel htmlFor="schedule-cron">{t("schedules.cron")}*</FieldLabel>
                 <Input
                   id="schedule-cron"
                   className="font-mono"
@@ -577,38 +676,38 @@ export function DeviceDetailPage() {
                   disabled={saving}
                 />
                 <FieldDescription>
-                  Five parts: minute, hour, day, month, weekday. Example: */5 * * * * runs every five minutes.
+                  {t("schedules.cronHint")}
                 </FieldDescription>
                 <FieldError>{formErrors.cron}</FieldError>
               </Field>
 
               <Field data-invalid={Boolean(formErrors.type)} data-disabled={unsupportedExistingType}>
-                <FieldLabel htmlFor="schedule-type">Schedule Type*</FieldLabel>
+                <FieldLabel htmlFor="schedule-type">{t("schedules.type")}*</FieldLabel>
                 <Select
                   value={formType}
                   onValueChange={requestTypeChange}
                   disabled={saving || unsupportedExistingType}
                 >
                   <SelectTrigger id="schedule-type" className="w-full" aria-invalid={Boolean(formErrors.type)}>
-                    <SelectValue placeholder="Select a schedule type" />
+                    <SelectValue placeholder={t("schedules.selectType")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
                       {unsupportedExistingType && editingSchedule && (
-                        <SelectItem value={editingSchedule.type}>{editingSchedule.type_label}</SelectItem>
+                        <SelectItem value={editingSchedule.type}>{scheduleTypeLabel(t, editingSchedule.type, editingSchedule.type_label)}</SelectItem>
                       )}
                       {Object.entries(schema).map(([type, definition]) => (
-                        <SelectItem key={type} value={type}>{definition.label}</SelectItem>
+                        <SelectItem key={type} value={type}>{scheduleTypeLabel(t, type, definition.label)}</SelectItem>
                       ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
                 {selectedDefinition && (
-                  <FieldDescription>{selectedDefinition.description}</FieldDescription>
+                  <FieldDescription>{scheduleTypeDescription(t, formType, selectedDefinition)}</FieldDescription>
                 )}
                 {unsupportedExistingType && (
                   <FieldDescription>
-                    This legacy type can keep running, but only its name and cron can be edited here.
+                    {t("schedules.legacyHint")}
                   </FieldDescription>
                 )}
                 <FieldError>{formErrors.type}</FieldError>
@@ -620,6 +719,7 @@ export function DeviceDetailPage() {
                 <Separator />
                 <ScheduleForm
                   key={formType}
+                  type={formType}
                   definition={selectedDefinition}
                   values={formParams}
                   errors={formErrors}
@@ -638,10 +738,10 @@ export function DeviceDetailPage() {
 
           <Separator />
           <SheetFooter className="flex-row justify-end">
-            <Button type="button" variant="outline" onClick={requestSheetClose} disabled={saving}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={requestSheetClose} disabled={saving}>{t("common.cancel")}</Button>
             <Button type="button" onClick={() => void handleSave()} disabled={saving}>
               {saving && <Spinner data-icon="inline-start" />}
-              {saving ? "Saving..." : editingSchedule ? "Save Changes" : "Create Schedule"}
+              {saving ? t("common.saving") : editingSchedule ? t("devices.saveChanges") : t("schedules.createSchedule")}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -650,19 +750,23 @@ export function DeviceDetailPage() {
       <AlertDialog open={Boolean(deleteConfirm)} onOpenChange={(open) => !open && !deleting && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteConfirm?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>{t("schedules.deleteTitle", { name: deleteConfirm?.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This {deleteConfirm?.type_label ?? "schedule"} will stop running immediately. This action cannot be undone.
+              {t("schedules.deleteDescription", {
+                type: deleteConfirm
+                  ? scheduleTypeLabel(t, deleteConfirm.type, deleteConfirm.type_label)
+                  : t("schedules.schedule"),
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={(event) => {
               event.preventDefault();
               void handleDelete();
             }} disabled={deleting}>
               {deleting && <Spinner data-icon="inline-start" />}
-              {deleting ? "Deleting..." : "Delete"}
+              {deleting ? t("common.deleting") : t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -671,39 +775,38 @@ export function DeviceDetailPage() {
       <AlertDialog
         open={Boolean(discardAction)}
         onOpenChange={(open) => {
-          if (!open) {
-            setDiscardAction(null);
-            setPendingType(null);
-          }
+          if (!open) dismissDiscardDialog();
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {discardAction === "type"
+                ? t("schedules.changeTypeTitle")
+                : t("schedules.discardTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {discardAction === "type"
-                ? "Changing the schedule type resets its current parameters."
-                : "Your changes to this schedule have not been saved."}
+                ? t("schedules.changeTypeDescription")
+                : t("schedules.discardDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setDiscardAction(null);
-                setPendingType(null);
+            <AlertDialogCancel onClick={dismissDiscardDialog}>
+              {discardAction === "type" ? t("schedules.keepType") : t("schedules.keepEditing")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={discardAction === "type" ? "default" : "destructive"}
+              onClick={(event) => {
+                event.preventDefault();
+                const action = discardAction;
+                const nextType = pendingType;
+                dismissDiscardDialog();
+                if (action === "type" && nextType) applyType(nextType);
+                else if (action === "close") closeSheet();
               }}
             >
-              Keep Editing
-            </AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => {
-              const action = discardAction;
-              const nextType = pendingType;
-              setDiscardAction(null);
-              setPendingType(null);
-              if (action === "type" && nextType) applyType(nextType);
-              else if (action === "close") closeSheet();
-            }}>
-              Discard Changes
+              {discardAction === "type" ? t("schedules.changeType") : t("schedules.discardChanges")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

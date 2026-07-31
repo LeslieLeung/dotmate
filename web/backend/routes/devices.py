@@ -38,7 +38,11 @@ from web.backend.schemas import (
     ScheduleUpdate,
 )
 from web.backend.routes.auth import verify_token
-from web.backend.scheduler import reload_scheduler
+from web.backend.scheduler import ScheduleRunError, reload_scheduler, run_schedule_now
+from web.backend.schedule_conflicts import (
+    find_cron_conflicts,
+    format_conflict_message,
+)
 from web.backend.schedule_types import (
     build_summary,
     get_schedule_type_schema,
@@ -732,6 +736,34 @@ def list_remote_content(
 # ── Schedule CRUD (nested under device) ───────────────────
 
 
+def _raise_if_schedule_conflicts(
+    session: Session,
+    device_id: int,
+    cron: str,
+    *,
+    exclude_id: int | None = None,
+) -> None:
+    existing = session.exec(
+        select(Schedule).where(Schedule.device_id == device_id)
+    ).all()
+    conflicts = find_cron_conflicts(
+        cron,
+        [(s.id, s.name, s.cron or "") for s in existing if s.id is not None],
+        exclude_id=exclude_id,
+    )
+    if not conflicts:
+        return
+    message = format_conflict_message(conflicts)
+    raise HTTPException(
+        409,
+        detail={
+            "message": message,
+            "fields": {"cron": message},
+            "conflicts": [c.to_dict() for c in conflicts],
+        },
+    )
+
+
 @router.get("/{device_id}/schedule-types")
 def get_device_schedule_types(
     device_id: int,
@@ -770,6 +802,7 @@ def create_schedule(
     if not device:
         raise HTTPException(404, "Device not found")
     params = _validate_schedule_params(body.type, body.params, device.device_model)
+    _raise_if_schedule_conflicts(session, device_id, body.cron)
     params_json = json.dumps(params) if params else None
     schedule = Schedule(
         device_id=device_id,
@@ -839,6 +872,14 @@ def update_schedule(
             )
         normalized_params = current_params
 
+    if "cron" in fields_set and body.cron and body.cron != schedule.cron:
+        _raise_if_schedule_conflicts(
+            session,
+            schedule.device_id,
+            body.cron,
+            exclude_id=schedule.id,
+        )
+
     if "name" in fields_set:
         schedule.name = body.name
     if "cron" in fields_set:
@@ -891,3 +932,18 @@ def delete_schedule(
         session.add(snapshot)
         session.commit()
         raise HTTPException(500, "Scheduler reload failed; schedule was not deleted")
+
+
+@router.post(
+    "/schedules/{schedule_id}/run",
+    response_model=RemoteActionResponse,
+)
+def run_schedule(
+    schedule_id: int,
+    _=Depends(verify_token),
+):
+    """Push the schedule to the device immediately, outside the cron schedule."""
+    try:
+        return RemoteActionResponse(message=run_schedule_now(schedule_id))
+    except ScheduleRunError as exc:
+        raise HTTPException(exc.status_code, exc.message) from exc

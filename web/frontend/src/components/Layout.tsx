@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut, Menu, Monitor, Settings } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -13,12 +14,8 @@ import {
 import { clearToken, getToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { to: "/devices", label: "Devices", icon: Monitor },
-  { to: "/settings", label: "Settings", icon: Settings },
-];
-
 export function Layout() {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -29,8 +26,12 @@ export function Layout() {
   }
 
   function navigation(onNavigate?: () => void) {
+    const navItems = [
+      { to: "/devices", label: t("nav.devices"), icon: Monitor },
+      { to: "/settings", label: t("nav.settings"), icon: Settings },
+    ];
     return (
-      <nav className="flex flex-1 flex-col gap-1 p-2" aria-label="Primary navigation">
+      <nav className="flex flex-1 flex-col gap-1 p-2" aria-label={t("nav.primary")}>
         {navItems.map(({ to, label, icon: Icon }) => {
           const active = location.pathname.startsWith(to);
           return (
@@ -64,7 +65,7 @@ export function Layout() {
           onClick={handleLogout}
         >
           <LogOut data-icon="inline-start" />
-          Log Out
+          {t("nav.logout")}
         </Button>
       </div>
     );
@@ -76,7 +77,7 @@ export function Layout() {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Open navigation"
+          aria-label={t("nav.open")}
           onClick={() => setMobileOpen(true)}
         >
           <Menu />

@@ -215,3 +215,112 @@ def stop_scheduler() -> None:
     if scheduler.running:
         scheduler.shutdown(wait=True)
         logger.info("Background scheduler stopped")
+
+
+class ScheduleRunError(Exception):
+    """Raised when a schedule cannot be executed immediately."""
+
+    def __init__(self, message: str, *, status_code: int = 422):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+
+
+def run_schedule_now(schedule_id: int) -> str:
+    """Execute one schedule immediately using the same path as cron jobs."""
+    with Session(engine) as session:
+        schedule = session.get(Schedule, schedule_id)
+        if not schedule:
+            raise ScheduleRunError("Schedule not found", status_code=404)
+
+        device = session.get(Device, schedule.device_id)
+        if not device:
+            raise ScheduleRunError("Device not found", status_code=404)
+
+        credential = session.get(ApiCredential, device.api_credential_id)
+        if not credential:
+            raise ScheduleRunError(
+                "Device has no API credential", status_code=409
+            )
+
+        try:
+            model = assert_model_matches_vendor(
+                device.device_model, credential.vendor
+            )
+        except ValueError as exc:
+            raise ScheduleRunError(str(exc), status_code=422) from exc
+
+        if schedule.type not in ViewFactory.get_available_types():
+            raise ScheduleRunError(
+                f"Unknown schedule type '{schedule.type}'", status_code=422
+            )
+
+        if ViewFactory.requires_text(schedule.type) and not model.supports_text:
+            raise ScheduleRunError(
+                f"Schedule type '{schedule.type}' requires text support",
+                status_code=422,
+            )
+
+        settings = session.get(Settings, 1)
+        request_interval = settings.request_interval if settings else 1.0
+        try:
+            client = create_vendor_client(
+                credential.vendor, credential.api_key, request_interval
+            )
+        except ValueError as exc:
+            raise ScheduleRunError(str(exc), status_code=422) from exc
+
+        try:
+            raw_params = json.loads(schedule.params) if schedule.params else {}
+            params_class = ViewFactory.get_params_class(schedule.type)
+            params = params_class.model_validate(raw_params).model_dump(
+                mode="json", exclude_none=True
+            )
+            params = sanitize_params_for_model(schedule.type, params, model)
+        except (ValueError, json.JSONDecodeError, ValidationError) as exc:
+            raise ScheduleRunError(
+                f"Invalid schedule configuration: {exc}", status_code=422
+            ) from exc
+
+        overlay = {
+            "show_battery_icon": (
+                device.show_battery_icon and model.supports_battery_overlay
+            ),
+            "show_battery_percentage": (
+                device.show_battery_percentage and model.supports_battery_overlay
+            ),
+            "show_refresh_time": device.show_refresh_time,
+        }
+        profile = model.to_profile()
+        device_name = device.name
+        device_remote_id = device.device_id
+        schedule_name = schedule.name
+        schedule_type = schedule.type
+
+    try:
+        ViewFactory.execute_view(
+            schedule_type,
+            client,
+            device_remote_id,
+            params,
+            overlay,
+            profile,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to run schedule id=%s (%s) for device '%s'",
+            schedule_id,
+            schedule_name,
+            device_name,
+        )
+        raise ScheduleRunError(
+            f"Unable to push schedule: {exc}", status_code=502
+        ) from exc
+
+    logger.info(
+        "Ran schedule id=%s (%s) for device '%s' immediately",
+        schedule_id,
+        schedule_name,
+        device_name,
+    )
+    return f"Pushed '{schedule_name}' to {device_name}"

@@ -96,7 +96,52 @@ def test_schedule_create_validates_params_and_normalizes_defaults(api_client):
     body = created.json()
     assert body["name"] == "Morning title"
     assert body["params"]["dither_type"] == "NONE"
-    assert body["summary"] == [{"label": "Main Title", "value": "Good morning"}]
+    assert body["summary"] == [
+        {
+            "field": "main_title",
+            "label": "Main Title",
+            "value": "Good morning",
+            "raw_value": "Good morning",
+        }
+    ]
+
+
+def test_structured_errors_are_opt_in_and_language_neutral(api_client):
+    legacy = api_client.post("/api/devices/schedules/999/run")
+    assert legacy.status_code == 404
+    assert legacy.json()["detail"] == "Schedule not found"
+
+    structured = api_client.post(
+        "/api/devices/schedules/999/run",
+        headers={"X-Dotmate-Structured-Errors": "1"},
+    )
+    assert structured.status_code == 404
+    assert structured.json()["detail"]["code"] == "schedule.notFound"
+    assert structured.json()["detail"]["message"] == "Schedule not found"
+
+    validation = api_client.put(
+        "/api/settings",
+        json={"request_interval": 0},
+        headers={"X-Dotmate-Structured-Errors": "1"},
+    )
+    assert validation.status_code == 422
+    assert validation.json()["detail"]["code"] == "validation"
+    assert "request_interval" in validation.json()["detail"]["field_errors"]
+
+
+def test_batch_errors_include_stable_error_codes(api_client):
+    response = api_client.post(
+        "/api/api-keys/batch",
+        json={
+            "items": [
+                {"name": "Same", "vendor": "mindreset", "api_key": "one"},
+                {"name": "Same", "vendor": "mindreset", "api_key": "two"},
+            ]
+        },
+    )
+    assert response.status_code == 200
+    error = next(item for item in response.json()["results"] if item["status"] == "error")
+    assert error["error_code"] == "credential.duplicate"
 
 
 def test_schedule_summary_never_contains_sensitive_fields(api_client):
@@ -139,6 +184,268 @@ def test_schedule_update_preserves_params_when_only_name_changes(api_client):
     assert updated.status_code == 200
     assert updated.json()["name"] == "Renamed"
     assert updated.json()["params"]["main_title"] == "Hello"
+
+
+def test_schedule_create_rejects_exact_cron_conflict(api_client):
+    device_id = create_device(api_client)
+    first = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Morning title",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "Hello"},
+        },
+    )
+    assert first.status_code == 201
+
+    conflict = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Also morning",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "World"},
+        },
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert "Morning title" in detail["message"]
+    assert detail["fields"]["cron"]
+    assert len(detail["conflicts"]) == 1
+    assert detail["conflicts"][0]["name"] == "Morning title"
+    assert detail["conflicts"][0]["cron"] == "0 9 * * *"
+    assert "sample_at" in detail["conflicts"][0]
+
+
+def test_schedule_create_rejects_semantic_cron_conflict(api_client):
+    device_id = create_device(api_client)
+    first = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Every five",
+            "cron": "*/5 * * * *",
+            "type": "title_image",
+            "params": {"main_title": "A"},
+        },
+    )
+    assert first.status_code == 201
+
+    conflict = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Enumerated five",
+            "cron": "0,5,10,15,20,25,30,35,40,45,50,55 * * * *",
+            "type": "title_image",
+            "params": {"main_title": "B"},
+        },
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert detail["conflicts"][0]["name"] == "Every five"
+    assert "Every five" in detail["message"]
+
+
+def test_schedule_create_allows_non_overlapping_crons(api_client):
+    device_id = create_device(api_client)
+    morning = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Morning",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "AM"},
+        },
+    )
+    assert morning.status_code == 201
+
+    evening = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Evening",
+            "cron": "0 18 * * *",
+            "type": "title_image",
+            "params": {"main_title": "PM"},
+        },
+    )
+    assert evening.status_code == 201
+
+
+def test_schedule_update_allows_unchanged_cron_without_self_conflict(api_client):
+    device_id = create_device(api_client)
+    created = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Solo",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "Hello"},
+        },
+    ).json()
+
+    updated = api_client.put(
+        f"/api/devices/schedules/{created['id']}",
+        json={
+            "name": "Solo renamed",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "Hello"},
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Solo renamed"
+
+
+def test_schedule_update_rejects_cron_conflict_with_sibling(api_client):
+    device_id = create_device(api_client)
+    first = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Morning",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "AM"},
+        },
+    ).json()
+    second = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Evening",
+            "cron": "0 18 * * *",
+            "type": "title_image",
+            "params": {"main_title": "PM"},
+        },
+    ).json()
+
+    conflict = api_client.put(
+        f"/api/devices/schedules/{second['id']}",
+        json={"cron": "0 9 * * *"},
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert detail["conflicts"][0]["id"] == first["id"]
+    assert detail["conflicts"][0]["name"] == "Morning"
+
+
+def test_find_cron_conflicts_unit():
+    from datetime import datetime, timezone
+
+    from web.backend.schedule_conflicts import find_cron_conflicts
+
+    now = datetime(2026, 7, 31, 0, 0, tzinfo=timezone.utc)
+    existing = [(1, "Every five", "*/5 * * * *")]
+    conflicts = find_cron_conflicts(
+        "0,5,10,15,20,25,30,35,40,45,50,55 * * * *",
+        existing,
+        now=now,
+    )
+    assert len(conflicts) == 1
+    assert conflicts[0].id == 1
+    assert conflicts[0].sample_at.minute % 5 == 0
+
+    none = find_cron_conflicts(
+        "0 18 * * *",
+        [(1, "Morning", "0 9 * * *")],
+        now=now,
+    )
+    assert none == []
+
+    self_ok = find_cron_conflicts(
+        "0 9 * * *",
+        [(1, "Self", "0 9 * * *")],
+        exclude_id=1,
+        now=now,
+    )
+    assert self_ok == []
+
+
+def test_run_schedule_pushes_immediately(api_client, monkeypatch):
+    device_id = create_device(api_client)
+    created = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Morning title",
+            "cron": "0 9 * * *",
+            "type": "title_image",
+            "params": {"main_title": "Hello"},
+        },
+    ).json()
+
+    calls = []
+
+    def fake_execute(view_type, client, device_remote_id, params, overlay, profile):
+        calls.append(
+            {
+                "view_type": view_type,
+                "device_id": device_remote_id,
+                "params": params,
+                "overlay": overlay,
+                "profile_name": profile.name,
+                "width": profile.width,
+                "height": profile.height,
+            }
+        )
+
+    monkeypatch.setattr(
+        "web.backend.scheduler.ViewFactory.execute_view", fake_execute
+    )
+
+    response = api_client.post(f"/api/devices/schedules/{created['id']}/run")
+    assert response.status_code == 200
+    assert response.json()["message"] == "Pushed 'Morning title' to Desk"
+    assert len(calls) == 1
+    assert calls[0]["view_type"] == "title_image"
+    assert calls[0]["device_id"] == "device-1"
+    assert calls[0]["params"]["main_title"] == "Hello"
+    assert calls[0]["profile_name"] == "quote0"
+    assert calls[0]["width"] == 296
+    assert calls[0]["height"] == 152
+
+
+def test_run_schedule_not_found(api_client):
+    response = api_client.post("/api/devices/schedules/99999/run")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Schedule not found"
+
+
+def test_run_schedule_rejects_text_on_image_only_device(api_client):
+    credential_id = api_client.post(
+        "/api/api-keys/batch",
+        json={
+            "items": [
+                {"name": "Zectrix", "vendor": "zectrix", "api_key": "zt_key"}
+            ]
+        },
+    ).json()["results"][0]["credential"]["id"]
+    device = api_client.post(
+        "/api/devices",
+        json={
+            "name": "Note",
+            "device_id": "AA:BB:CC:DD:EE:FF",
+            "api_credential_id": credential_id,
+            "device_model": "note4",
+        },
+    ).json()
+
+    # Bypass create validation by inserting a text schedule directly.
+    from web.backend.models import Schedule
+
+    with Session(db.engine) as session:
+        schedule = Schedule(
+            device_id=device["id"],
+            name="Text",
+            cron="0 9 * * *",
+            type="text",
+            params=json.dumps({"message": "hi"}),
+        )
+        session.add(schedule)
+        session.commit()
+        session.refresh(schedule)
+        schedule_id = schedule.id
+
+    response = api_client.post(f"/api/devices/schedules/{schedule_id}/run")
+    assert response.status_code == 422
+    assert "text support" in response.json()["detail"]
 
 
 def test_raw_image_cannot_be_created_from_web(api_client):
@@ -558,9 +865,9 @@ def test_vendors_and_device_models_are_listed(api_client):
     mindreset = next(item for item in vendors if item["id"] == "mindreset")
     zectrix = next(item for item in vendors if item["id"] == "zectrix")
     assert mindreset["supports_device_discovery"] is True
-    assert zectrix["supports_device_discovery"] is False
+    assert zectrix["supports_device_discovery"] is True
     assert "status" in mindreset["capabilities"]
-    assert zectrix["capabilities"] == []
+    assert zectrix["capabilities"] == ["devices"]
 
     models = api_client.get("/api/device-models").json()
     assert {item["id"] for item in models} == {"quote0", "note4"}
@@ -571,7 +878,29 @@ def test_vendors_and_device_models_are_listed(api_client):
     assert note4[0]["supports_text"] is False
 
 
-def test_zectrix_credential_saves_without_discovery(api_client):
+def test_zectrix_credential_discovers_note4_devices(api_client, monkeypatch):
+    class Client:
+        def list_devices(self):
+            return [
+                RemoteDevice(
+                    id="AA:BB:CC:DD:EE:FF",
+                    alias="我的设备",
+                    series="zectrix",
+                    model="bread-compact-wifi",
+                ),
+                RemoteDevice(
+                    id="11:22:33:44:55:66",
+                    alias=None,
+                    series="zectrix",
+                    model="bread-compact-wifi",
+                ),
+            ]
+
+    monkeypatch.setattr(
+        api_key_routes,
+        "create_vendor_client",
+        lambda vendor, key, interval: Client(),
+    )
     response = api_client.post(
         "/api/api-keys/batch",
         json={
@@ -583,12 +912,31 @@ def test_zectrix_credential_saves_without_discovery(api_client):
     assert response.status_code == 200
     result = response.json()["results"][0]
     assert result["status"] == "success"
-    assert result["validation_status"] == "unverified"
-    assert result["sync"] is None
+    assert result["validation_status"] == "validated"
+    assert result["sync"] == {
+        "fetched": 2,
+        "created": 2,
+        "linked": 0,
+        "duplicates": 0,
+    }
     assert result["credential"]["vendor"] == "zectrix"
 
+    devices = api_client.get("/api/devices").json()
+    assert {device["device_id"] for device in devices} == {
+        "AA:BB:CC:DD:EE:FF",
+        "11:22:33:44:55:66",
+    }
+    named = next(d for d in devices if d["device_id"] == "AA:BB:CC:DD:EE:FF")
+    assert named["name"] == "我的设备"
+    assert named["device_model"] == "note4"
+    unnamed = next(d for d in devices if d["device_id"] == "11:22:33:44:55:66")
+    assert unnamed["name"] == "11:22:33:44:55:66"
+    assert unnamed["device_model"] == "note4"
+
     sync = api_client.post(f"/api/api-keys/{result['credential']['id']}/sync")
-    assert sync.status_code == 422
+    assert sync.status_code == 200
+    assert sync.json()["sync"]["duplicates"] == 2
+    assert sync.json()["sync"]["created"] == 0
 
 
 def test_note4_device_and_schedule_schema(api_client):

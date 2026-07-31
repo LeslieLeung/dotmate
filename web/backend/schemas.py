@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional, Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 from apscheduler.triggers.cron import CronTrigger
+from web.backend.errors import describe_message
 
 
 def validate_cron(value: Optional[str]) -> Optional[str]:
@@ -119,6 +120,16 @@ class ApiCredentialBatchResult(BaseModel):
     sync: Optional[DeviceSyncStats] = None
     validation_status: Optional[Literal["validated", "unverified", "invalid"]] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
+    error_params: dict[str, str | int | float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def add_error_descriptor(self):
+        if self.error and not self.error_code:
+            descriptor = describe_message(self.error)
+            self.error_code = descriptor["code"]
+            self.error_params = descriptor["params"]
+        return self
 
 
 class ApiCredentialBatchResponse(BaseModel):
@@ -180,8 +191,10 @@ class DeviceUpdate(BaseModel):
 
 
 class ScheduleSummaryItem(BaseModel):
+    field: Optional[str] = None
     label: str
     value: str
+    raw_value: Optional[str | int | float | bool] = None
 
 
 class ScheduleRead(BaseModel):
@@ -220,7 +233,17 @@ class DeviceStatusPolicyRead(BaseModel):
     last_success_at: Optional[datetime] = None
     next_refresh_at: Optional[datetime] = None
     last_error: Optional[str] = None
+    last_error_code: Optional[str] = None
+    last_error_params: dict[str, str | int | float] = Field(default_factory=dict)
     refresh_requested_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def add_error_descriptor(self):
+        if self.last_error and not self.last_error_code:
+            descriptor = describe_message(self.last_error)
+            self.last_error_code = descriptor["code"]
+            self.last_error_params = descriptor["params"]
+        return self
 
 
 class DeviceStatusPolicyUpdate(BaseModel):

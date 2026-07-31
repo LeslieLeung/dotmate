@@ -6,7 +6,7 @@ import time
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from typing import Any, Literal, Optional, List, Union
 
-from dotmate.platforms.base import ImagePayload, TextPayload
+from dotmate.platforms.base import ImagePayload, RemoteDevice, TextPayload
 
 logger = logging.getLogger(__name__)
 
@@ -97,15 +97,6 @@ class DisplayImageRequest(BaseModel):
 
 class ApiResponse(BaseModel):
     message: str
-
-
-class RemoteDevice(BaseModel):
-    alias: Optional[str] = None
-    location: Optional[str] = None
-    series: str
-    model: str
-    edition: int
-    id: str
 
 
 class DeviceIntervalSettings(BaseModel):

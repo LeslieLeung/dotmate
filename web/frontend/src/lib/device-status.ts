@@ -1,10 +1,13 @@
 import type { DeviceStatusPolicy } from "@/lib/api";
 
-export function formatStatusTimestamp(value: string | null): string {
+export function formatStatusTimestamp(
+  value: string | null,
+  locale?: string
+): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);

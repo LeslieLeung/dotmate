@@ -19,10 +19,11 @@ from dotmate.platforms.zectrix import ZectrixClient
 
 
 class VendorClient(Protocol):
-    """Remote-management surface used by MindReset-capable vendors.
+    """Remote-management surface used by device cloud vendors.
 
-    Push-only vendors (e.g. Zectrix) may omit these methods; callers must gate
-    on ``VendorDefinition.capabilities`` before invoking them.
+    Callers must gate on ``VendorDefinition.capabilities`` before invoking
+    methods. Zectrix currently exposes device discovery via ``list_devices``
+    but not status/settings.
     """
 
     def list_devices(self) -> list[RemoteDevice]: ...
@@ -89,15 +90,15 @@ _VENDORS = {
         id="zectrix",
         label="Zectrix",
         description="Zectrix Open API for Note 4 devices.",
-        capabilities=(),
+        capabilities=("devices",),
         client_factory=lambda api_key, request_interval: ZectrixClient(
             api_key, request_interval=request_interval
         ),
         credential_hint=(
             "Paste your Zectrix API key (typically starts with zt_). "
-            "Device discovery is not available — add Note 4 devices manually."
+            "Devices can be synced after saving."
         ),
-        supports_credential_validation=False,
+        supports_credential_validation=True,
     ),
 }
 

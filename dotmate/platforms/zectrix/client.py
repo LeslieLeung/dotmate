@@ -1,4 +1,6 @@
-"""Zectrix (Note 4) cloud API client — image push only.
+"""Zectrix (Note 4) cloud API client.
+
+Supports image push and device discovery.
 
 Translates vendor-neutral payloads into the Zectrix multipart wire format
 (X-API-Key auth, raw image file upload, boolean dither, optional pageId).
@@ -7,10 +9,12 @@ API docs: https://wiki.zectrix.com/zh/software/api-docs
 Base URL: https://cloud.zectrix.com/open/v1
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
-from typing import Union
+from typing import Any, List, Union
 
 import requests
 
@@ -19,14 +23,15 @@ from dotmate.platforms.base import (
     DeviceStatus,
     ImagePayload,
     PlatformClient,
+    RemoteDevice,
 )
-from dotmate.platforms.zectrix.models import ZectrixImageRequest
+from dotmate.platforms.zectrix.models import ZectrixDeviceItem, ZectrixImageRequest
 
 logger = logging.getLogger(__name__)
 
 
 class ZectrixClient(PlatformClient):
-    """Client for Zectrix Note 4 image display API."""
+    """Client for Zectrix Note 4 open API (image display + device list)."""
 
     def __init__(self, api_key: str, request_interval: float = 1.0):
         self.api_key = api_key
@@ -48,8 +53,11 @@ class ZectrixClient(PlatformClient):
             self._last_request_time = time.monotonic()
         return response
 
-    def _handle_response(self, response: requests.Response) -> ApiResponse:
-        """Parse Zectrix unified {code, data, msg} response into ApiResponse."""
+    def _parse_envelope(self, response: requests.Response) -> tuple[Any, str]:
+        """Parse Zectrix unified {code, data, msg} response.
+
+        Returns ``(data, message)``. Raises on HTTP or API-level errors.
+        """
         response.encoding = "utf-8"
         if not response.ok:
             logger.error(
@@ -73,8 +81,12 @@ class ZectrixClient(PlatformClient):
             logger.error(f"Zectrix API returned error: {error_msg}")
             raise ValueError(error_msg)
 
+        return response_data.get("data"), msg
+
+    def _handle_response(self, response: requests.Response) -> ApiResponse:
+        """Parse Zectrix unified response into ApiResponse."""
+        data, msg = self._parse_envelope(response)
         if not msg:
-            data = response_data.get("data")
             msg = f"success: {data}" if data is not None else "success"
         return ApiResponse(message=str(msg))
 
@@ -95,6 +107,37 @@ class ZectrixClient(PlatformClient):
         if payload.dither_type is None:
             return True
         return payload.dither_type != "NONE"
+
+    def list_devices(self) -> List[RemoteDevice]:
+        """List devices bound to this API key.
+
+        Endpoint: GET /devices
+        Response data: [{deviceId, alias, board}, ...]
+        """
+        url = f"{self.base_url}/devices"
+        logger.info(f"Listing Zectrix devices from {url}")
+        response = self._rate_limited_request("GET", url, headers=self.headers)
+        data, _ = self._parse_envelope(response)
+        if data is None:
+            return []
+        if not isinstance(data, list):
+            raise ValueError("Zectrix devices response must be a list")
+
+        devices: List[RemoteDevice] = []
+        for item in data:
+            parsed = ZectrixDeviceItem.model_validate(item)
+            device_id = parsed.device_id.strip()
+            if not device_id:
+                continue
+            devices.append(
+                RemoteDevice(
+                    id=device_id,
+                    alias=parsed.alias,
+                    model=parsed.board,
+                    series="zectrix",
+                )
+            )
+        return devices
 
     def display_image(self, device_id: str, payload: ImagePayload) -> ApiResponse:
         """Push image via multipart form to Zectrix Note 4.

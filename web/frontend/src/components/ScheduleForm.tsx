@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import type {
   ScheduleFieldSchema,
@@ -29,8 +30,14 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  scheduleFieldDescription,
+  scheduleFieldLabel,
+  scheduleOptionLabel,
+} from "@/i18n/metadata";
 
 interface ScheduleFormProps {
+  type: string;
   definition: ScheduleTypeDefinition;
   values: Record<string, unknown>;
   errors: Record<string, string>;
@@ -43,12 +50,14 @@ function fieldId(key: string) {
 }
 
 export function ScheduleForm({
+  type,
   definition,
   values,
   errors,
   disabled = false,
   onChange,
 }: ScheduleFormProps) {
+  const { t } = useTranslation();
   const [displayOpen, setDisplayOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -93,7 +102,7 @@ export function ScheduleForm({
           disabled={disabled}
         >
           <SelectTrigger id={id} className="w-full" aria-invalid={invalid}>
-            <SelectValue placeholder={`Select ${field.label}`} />
+            <SelectValue placeholder={t("schedules.selectField", { field: scheduleFieldLabel(t, type, key, field) })} />
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
@@ -102,7 +111,7 @@ export function ScheduleForm({
                   key={JSON.stringify(option.value)}
                   value={JSON.stringify(option.value)}
                 >
-                  {option.label}
+                  {scheduleOptionLabel(t, option.value, option.label)}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -165,9 +174,9 @@ export function ScheduleForm({
       return (
         <Field key={key} orientation="horizontal" data-invalid={invalid}>
           <div className="flex flex-1 flex-col gap-1">
-            <FieldLabel htmlFor={fieldId(key)}>{field.label}</FieldLabel>
+            <FieldLabel htmlFor={fieldId(key)}>{scheduleFieldLabel(t, type, key, field)}</FieldLabel>
             {field.description && (
-              <FieldDescription>{field.description}</FieldDescription>
+              <FieldDescription>{scheduleFieldDescription(t, type, key, field)}</FieldDescription>
             )}
             <FieldError>{errors[key]}</FieldError>
           </div>
@@ -178,12 +187,12 @@ export function ScheduleForm({
     return (
       <Field key={key} data-invalid={invalid}>
         <FieldLabel htmlFor={fieldId(key)}>
-          {field.label}
+          {scheduleFieldLabel(t, type, key, field)}
           {field.required && <span aria-hidden="true">*</span>}
         </FieldLabel>
         {renderControl(key, field)}
         {field.description && (
-          <FieldDescription>{field.description}</FieldDescription>
+          <FieldDescription>{scheduleFieldDescription(t, type, key, field)}</FieldDescription>
         )}
         <FieldError>{errors[key]}</FieldError>
       </Field>
@@ -215,8 +224,8 @@ export function ScheduleForm({
   return (
     <div className="flex flex-col gap-6">
       <FieldGroup>{mainFields.map(([key, field]) => renderField(key, field))}</FieldGroup>
-      {renderSection("Display Options", displayFields, displayOpen, setDisplayOpen)}
-      {renderSection("Advanced Task Options", advancedFields, advancedOpen, setAdvancedOpen)}
+      {renderSection(t("schedules.displayOptions"), displayFields, displayOpen, setDisplayOpen)}
+      {renderSection(t("schedules.advancedOptions"), advancedFields, advancedOpen, setAdvancedOpen)}
     </div>
   );
 }

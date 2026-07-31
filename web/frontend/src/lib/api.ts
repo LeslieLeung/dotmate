@@ -1,15 +1,49 @@
 import { getToken, clearToken } from "./auth";
+import i18n from "@/i18n";
 
 const API_BASE = "/api";
 
 export class ApiError extends Error {
   fieldErrors: Record<string, string>;
+  code: string | null;
+  params: Record<string, string | number>;
 
-  constructor(message: string, fieldErrors: Record<string, string> = {}) {
+  constructor(
+    message: string,
+    fieldErrors: Record<string, string> = {},
+    code: string | null = null,
+    params: Record<string, string | number> = {}
+  ) {
     super(message);
     this.name = "ApiError";
     this.fieldErrors = fieldErrors;
+    this.code = code;
+    this.params = params;
   }
+}
+
+interface ErrorDescriptor {
+  code?: string;
+  params?: Record<string, string | number>;
+}
+
+function localizedError(
+  descriptor: ErrorDescriptor | undefined,
+  fallbackKey: string
+): string {
+  if (descriptor?.code) {
+    const key = `errors.${descriptor.code}`;
+    if (i18n.exists(key)) return i18n.t(key, descriptor.params);
+  }
+  return i18n.t(fallbackKey);
+}
+
+function statusErrorKey(status: number): string {
+  if (status === 404) return "errors.notFound";
+  if (status === 409) return "errors.conflict";
+  if (status === 422) return "errors.validation";
+  if (status >= 500) return "errors.server";
+  return "errors.generic";
 }
 
 async function request<T>(
@@ -19,6 +53,7 @@ async function request<T>(
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Dotmate-Structured-Errors": "1",
     ...(options.headers as Record<string, string>),
   };
 
@@ -41,21 +76,33 @@ async function request<T>(
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
     if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const fieldDescriptors = (detail.field_errors ?? {}) as Record<
+        string,
+        ErrorDescriptor
+      >;
+      const fields = Object.fromEntries(
+        Object.entries(fieldDescriptors).map(([field, descriptor]) => [
+          field,
+          localizedError(descriptor, "errors.invalidValue"),
+        ])
+      );
       throw new ApiError(
-        detail.message || `Request failed: ${res.status}`,
-        detail.fields || {}
+        localizedError(detail, statusErrorKey(res.status)),
+        fields,
+        detail.code ?? null,
+        detail.params ?? {}
       );
     }
     if (Array.isArray(detail)) {
       const fields = Object.fromEntries(
         detail.map((item) => [
           Array.isArray(item.loc) ? String(item.loc.at(-1)) : "form",
-          item.msg || "Invalid value",
+          i18n.t(item.type === "missing" ? "errors.required" : "errors.invalidValue"),
         ])
       );
-      throw new ApiError("Check the highlighted fields", fields);
+      throw new ApiError(i18n.t("errors.validation"), fields, "validation");
     }
-    throw new ApiError(detail || `Request failed: ${res.status}`);
+    throw new ApiError(i18n.t(statusErrorKey(res.status)));
   }
 
   if (res.status === 204) return undefined as T;
@@ -113,6 +160,8 @@ export interface DeviceStatusPolicy {
   last_success_at: string | null;
   next_refresh_at: string | null;
   last_error: string | null;
+  last_error_code?: string | null;
+  last_error_params?: Record<string, string | number>;
   refresh_requested_at: string | null;
 }
 
@@ -134,6 +183,8 @@ export interface Schedule {
 export interface ScheduleSummaryItem {
   label: string;
   value: string;
+  field?: string;
+  raw_value?: string | number | boolean;
 }
 
 export interface Settings {
@@ -192,6 +243,8 @@ export interface ApiCredentialBatchResult {
   sync?: DeviceSyncStats;
   validation_status?: "validated" | "unverified" | "invalid";
   error?: string;
+  error_code?: string;
+  error_params?: Record<string, string | number>;
 }
 
 export interface RemoteDeviceSettings {
@@ -358,6 +411,8 @@ export const schedulesApi = {
       body: JSON.stringify(data),
     }),
   delete: (id: number) => request<void>(`/devices/schedules/${id}`, { method: "DELETE" }),
+  run: (id: number) =>
+    request<{ message: string }>(`/devices/schedules/${id}/run`, { method: "POST" }),
 };
 
 // ── Settings ─────────────────────────────────────────────

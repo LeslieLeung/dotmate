@@ -1,12 +1,16 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from web.backend.db import init_db
+from web.backend.errors import describe_message, structured_http_detail
 from web.backend.routes import api_keys, auth, device_models, devices, settings, schema, vendors
 
 
@@ -18,6 +22,63 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Dotmate Admin", lifespan=lifespan)
+
+
+def _structured_errors(request: Request) -> bool:
+    return request.headers.get("x-dotmate-structured-errors") == "1"
+
+
+@app.exception_handler(StarletteHTTPException)
+async def structured_http_exception(
+    request: Request,
+    exc: StarletteHTTPException,
+):
+    detail = (
+        structured_http_detail(exc.detail, exc.status_code)
+        if _structured_errors(request)
+        else exc.detail
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail},
+        headers=exc.headers,
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def structured_validation_exception(
+    request: Request,
+    exc: RequestValidationError,
+):
+    if not _structured_errors(request):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(exc.errors())},
+        )
+
+    fields: dict[str, str] = {}
+    field_errors: dict[str, dict] = {}
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error["loc"] if part != "body")
+        field = location or "form"
+        message = error.get("msg", "Invalid value")
+        fields[field] = message
+        field_errors[field] = describe_message(
+            "Field required" if error.get("type") == "missing" else message,
+            status_code=422,
+        )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "message": "Check the highlighted fields",
+                "code": "validation",
+                "params": {},
+                "fields": fields,
+                "field_errors": field_errors,
+            }
+        },
+    )
 
 # CORS — allow the Vite dev server during development
 app.add_middleware(

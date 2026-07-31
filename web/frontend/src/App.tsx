@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ShieldAlert } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -44,11 +46,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         <Empty className="max-w-md border">
           <EmptyHeader>
             <EmptyMedia variant="icon"><ShieldAlert /></EmptyMedia>
-            <EmptyTitle>Unable to verify access</EmptyTitle>
-            <EmptyDescription>Check the server connection and try again.</EmptyDescription>
+            <EmptyTitle>{t("auth.unableToVerify")}</EmptyTitle>
+            <EmptyDescription>{t("auth.connectionHint")}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button onClick={() => void checkAuthentication()}>Try Again</Button>
+            <Button onClick={() => void checkAuthentication()}>{t("common.tryAgain")}</Button>
           </EmptyContent>
         </Empty>
       </div>

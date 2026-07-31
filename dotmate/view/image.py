@@ -130,6 +130,13 @@ class ImageView(BaseView):
         """Get font with specified size, using custom settings if configured."""
         return self.font_manager.get_font(size, self.custom_font_name, self.font_weight)
 
+    @staticmethod
+    def _battery_string(runtime_status: object) -> str:
+        """Extract battery text from dict or structured DeviceRuntimeStatus."""
+        if isinstance(runtime_status, dict):
+            return runtime_status.get("battery", "") or ""
+        return getattr(runtime_status, "battery", None) or ""
+
     def _draw_overlay(self, image_data: bytes) -> bytes:
         """Draw battery and refresh time overlay in bottom-right corner."""
         try:
@@ -149,7 +156,7 @@ class ImageView(BaseView):
             if self.show_battery_icon or self.show_battery_percentage:
                 try:
                     status = self.client.get_device_status(self.device_id)
-                    battery_str = status.status.get("battery", "")
+                    battery_str = self._battery_string(status.status)
                     match = re.search(r"(\d+)", battery_str)
                     if match:
                         battery_pct = int(match.group(1))

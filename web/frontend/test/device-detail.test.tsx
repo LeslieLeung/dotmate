@@ -3,9 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getDevice, getScheduleTypes } = vi.hoisted(() => ({
+const { getDevice, getScheduleTypes, runSchedule, createSchedule } = vi.hoisted(() => ({
   getDevice: vi.fn(),
   getScheduleTypes: vi.fn(),
+  runSchedule: vi.fn(),
+  createSchedule: vi.fn(),
 }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -17,9 +19,15 @@ vi.mock("@/lib/api", async (importOriginal) => {
       get: getDevice,
       scheduleTypes: getScheduleTypes,
     },
+    schedulesApi: {
+      ...actual.schedulesApi,
+      run: runSchedule,
+      create: createSchedule,
+    },
   };
 });
 
+import { ApiError } from "@/lib/api";
 import { DeviceDetailPage } from "@/pages/DeviceDetailPage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -82,6 +90,7 @@ describe("DeviceDetailPage", () => {
         fields: {},
       },
     });
+    runSchedule.mockResolvedValue({ message: "Pushed 'Coding status' to Desk" });
   });
 
   it("renders only the server-provided safe summary", async () => {
@@ -322,5 +331,314 @@ describe("DeviceDetailPage", () => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(screen.queryByRole("dialog", { name: "Edit Schedule" })).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps the current type when cancelling a dirty type change", async () => {
+    const user = userEvent.setup();
+    getDevice.mockResolvedValue({
+      ...makeDevice(),
+      schedules: [],
+    });
+    getScheduleTypes.mockResolvedValue({
+      text: {
+        label: "Text Message",
+        description: "Send a custom message.",
+        fields: {
+          message: {
+            type: "string",
+            label: "Message",
+            required: true,
+            input: "textarea",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+        },
+      },
+      code_status: {
+        label: "WakaTime Coding Status",
+        description: "Coding status.",
+        fields: {},
+      },
+    });
+
+    render(
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/devices/1"]}>
+          <Routes>
+            <Route path="/devices/:id" element={<DeviceDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    await screen.findByRole("heading", { name: "Desk" });
+    await user.click(screen.getAllByRole("button", { name: "Add Schedule" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "Text Message" }));
+    await user.type(screen.getByLabelText("Message*"), "hello");
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "WakaTime Coding Status" }));
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(
+      screen.getByText("Changing the schedule type resets its current parameters.")
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Keep Current Type" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog", { name: "Add Schedule" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Schedule Type*" })).toHaveTextContent(
+      "Text Message"
+    );
+    expect(screen.getByLabelText("Message*")).toHaveValue("hello");
+  });
+
+  it("applies a dirty type change when confirming discard", async () => {
+    const user = userEvent.setup();
+    getDevice.mockResolvedValue({
+      ...makeDevice(),
+      schedules: [],
+    });
+    getScheduleTypes.mockResolvedValue({
+      text: {
+        label: "Text Message",
+        description: "Send a custom message.",
+        fields: {
+          message: {
+            type: "string",
+            label: "Message",
+            required: true,
+            input: "textarea",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+        },
+      },
+      code_status: {
+        label: "WakaTime Coding Status",
+        description: "Coding status.",
+        fields: {},
+      },
+    });
+
+    render(
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/devices/1"]}>
+          <Routes>
+            <Route path="/devices/:id" element={<DeviceDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    await screen.findByRole("heading", { name: "Desk" });
+    await user.click(screen.getAllByRole("button", { name: "Add Schedule" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "Text Message" }));
+    await user.type(screen.getByLabelText("Message*"), "hello");
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "WakaTime Coding Status" }));
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change Type" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog", { name: "Add Schedule" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Schedule Type*" })).toHaveTextContent(
+      "WakaTime Coding Status"
+    );
+    expect(screen.queryByLabelText("Message*")).not.toBeInTheDocument();
+  });
+
+  it("asks to change type when editing a saved schedule, not to close the sheet", async () => {
+    const user = userEvent.setup();
+    getDevice.mockResolvedValue({
+      ...makeDevice(),
+      schedules: [
+        {
+          id: 4,
+          name: "test",
+          cron: "*/5 * * * *",
+          type: "title_image",
+          type_label: "Title Card",
+          params: {
+            main_title: "Hello",
+            sub_title: "World!",
+          },
+          summary: [
+            { label: "Main Title", value: "Hello" },
+            { label: "Subtitle", value: "World!" },
+          ],
+        },
+      ],
+    });
+    getScheduleTypes.mockResolvedValue({
+      title_image: {
+        label: "Title Card",
+        description: "Title card.",
+        fields: {
+          main_title: {
+            type: "string",
+            label: "Main Title",
+            required: true,
+            input: "text",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+          sub_title: {
+            type: "string",
+            label: "Subtitle",
+            required: false,
+            input: "text",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+        },
+      },
+      work: {
+        label: "Work Countdown",
+        description: "Work countdown.",
+        fields: {
+          clock_in: {
+            type: "string",
+            label: "Clock In",
+            required: true,
+            input: "text",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+          clock_out: {
+            type: "string",
+            label: "Clock Out",
+            required: true,
+            input: "text",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+        },
+      },
+    });
+
+    render(
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/devices/1"]}>
+          <Routes>
+            <Route path="/devices/:id" element={<DeviceDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    await screen.findByRole("heading", { name: "Desk" });
+    await user.click(screen.getAllByRole("button", { name: "Edit test" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "Work Countdown" }));
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Change schedule type?" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Your changes to this schedule have not been saved.")
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Keep Current Type" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("dialog", { name: "Edit Schedule" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Schedule Type*" })).toHaveTextContent(
+      "Title Card"
+    );
+    expect(screen.getByLabelText("Main Title*")).toHaveValue("Hello");
+  });
+
+  it("runs a schedule immediately from the actions menu", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    const success = vi.spyOn(toast, "success");
+
+    render(
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/devices/1"]}>
+          <Routes>
+            <Route path="/devices/:id" element={<DeviceDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    await screen.findByRole("heading", { name: "Desk" });
+    await user.click(screen.getAllByRole("button", { name: "Run Coding status now" })[0]);
+
+    await waitFor(() => {
+      expect(runSchedule).toHaveBeenCalledWith(4);
+    });
+    expect(success).toHaveBeenCalledWith("Schedule pushed to the device");
+  });
+
+  it("surfaces schedule cron conflict errors from the API", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+    const errorToast = vi.spyOn(toast, "error");
+    const message =
+      'Schedule conflicts with "Coding status" (*/5 * * * *); next overlap at 2026-07-31 12:05';
+    createSchedule.mockRejectedValue(
+      new ApiError(message, { cron: message })
+    );
+    getScheduleTypes.mockResolvedValue({
+      text: {
+        label: "Text Message",
+        description: "Send a custom message.",
+        fields: {
+          message: {
+            type: "string",
+            label: "Message",
+            required: true,
+            input: "textarea",
+            section: "main",
+            sensitive: false,
+            hidden: false,
+          },
+        },
+      },
+    });
+
+    render(
+      <TooltipProvider>
+        <MemoryRouter initialEntries={["/devices/1"]}>
+          <Routes>
+            <Route path="/devices/:id" element={<DeviceDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
+    );
+
+    await screen.findByRole("heading", { name: "Desk" });
+    await user.click(screen.getAllByRole("button", { name: "Add Schedule" })[0]);
+
+    await user.type(screen.getByLabelText("Name*"), "Conflict");
+    await user.type(screen.getByLabelText("Cron Expression*"), "*/5 * * * *");
+    await user.click(screen.getByRole("combobox", { name: "Schedule Type*" }));
+    await user.click(screen.getByRole("option", { name: "Text Message" }));
+    await user.type(screen.getByLabelText("Message*"), "Hello");
+    await user.click(screen.getByRole("button", { name: "Create Schedule" }));
+
+    await waitFor(() => {
+      expect(createSchedule).toHaveBeenCalled();
+    });
+    expect(errorToast).toHaveBeenCalledWith(message);
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Add Schedule" })).toBeInTheDocument();
   });
 });

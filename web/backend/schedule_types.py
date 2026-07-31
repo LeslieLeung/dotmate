@@ -490,8 +490,10 @@ def build_summary(
                 rendered = f"{rendered[:61]}..."
         summary.append(
             {
+                "field": field_name,
                 "label": field_schema.get("label", _field_label(field_name)),
                 "value": rendered,
+                "raw_value": value,
             }
         )
         if len(summary) >= 3:

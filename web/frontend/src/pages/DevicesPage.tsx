@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Monitor, Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 import {
   AlertDialog,
@@ -81,8 +82,10 @@ import {
   statusRefreshCompleted,
   wait,
 } from "@/lib/device-status";
+import { modelDescription, modelDeviceIdLabel } from "@/i18n/metadata";
 
 export function DevicesPage() {
+  const { t, i18n } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [devices, setDevices] = useState<Device[]>([]);
   const [credentials, setCredentials] = useState<ApiCredential[]>([]);
@@ -205,11 +208,11 @@ export function DevicesPage() {
 
   async function handleSave() {
     const errors: Record<string, string> = {};
-    if (!editingDevice && !formVendor) errors.vendor = "Vendor is required";
-    if (!formName.trim()) errors.name = "Name is required";
-    if (!formDeviceId.trim()) errors.device_id = "Device ID is required";
-    if (!formCredentialId) errors.api_credential_id = "API key is required";
-    if (!editingDevice && !formDeviceModel) errors.device_model = "Device model is required";
+    if (!editingDevice && !formVendor) errors.vendor = t("devices.vendorRequired");
+    if (!formName.trim()) errors.name = t("devices.nameRequired");
+    if (!formDeviceId.trim()) errors.device_id = t("devices.idRequired");
+    if (!formCredentialId) errors.api_credential_id = t("devices.apiKeyRequired");
+    if (!editingDevice && !formDeviceModel) errors.device_model = t("devices.modelRequired");
     setFormErrors(errors);
     if (Object.keys(errors).length || saving) return;
 
@@ -225,7 +228,7 @@ export function DevicesPage() {
           show_battery_percentage: supportsBattery ? formBatteryPercent : false,
           show_refresh_time: formRefreshTime,
         });
-        toast.success("Device updated");
+        toast.success(t("devices.updated"));
       } else {
         await devicesApi.create({
           name: formName.trim(),
@@ -236,12 +239,12 @@ export function DevicesPage() {
           show_battery_percentage: supportsBattery ? formBatteryPercent : false,
           show_refresh_time: formRefreshTime,
         });
-        toast.success("Device created");
+        toast.success(t("devices.created"));
       }
       setDialogOpen(false);
       await loadDevices();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save device");
+      toast.error(error instanceof Error ? error.message : t("devices.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -272,11 +275,11 @@ export function DevicesPage() {
     setDeleting(true);
     try {
       await devicesApi.delete(deleteConfirm.id);
-      toast.success("Device deleted");
+      toast.success(t("devices.deleted"));
       setDeleteConfirm(null);
       await loadDevices();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete device");
+      toast.error(error instanceof Error ? error.message : t("devices.deleteFailed"));
     } finally {
       setDeleting(false);
     }
@@ -288,7 +291,7 @@ export function DevicesPage() {
     try {
       const request = await devicesApi.refreshAllStatuses();
       if (!request.queued) {
-        toast.info("No devices support status refresh");
+        toast.info(t("devices.noStatusSupport"));
         return;
       }
       const deadline = Date.now() + 60_000;
@@ -308,14 +311,14 @@ export function DevicesPage() {
           )
         ) {
           const failures = targets.filter((device) => device.status_policy.last_error).length;
-          if (failures) toast.error(`${failures} device ${failures === 1 ? "status" : "statuses"} could not be refreshed`);
-          else toast.success("Device statuses refreshed");
+          if (failures) toast.error(t("devices.statusRefreshFailed", { count: failures }));
+          else toast.success(t("devices.statusesRefreshed"));
           return;
         }
       }
-      toast.info("Refresh is continuing in the background");
+      toast.info(t("devices.refreshContinues"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to refresh statuses");
+      toast.error(error instanceof Error ? error.message : t("devices.refreshFailed"));
     } finally {
       setRefreshingStatuses(false);
     }
@@ -334,8 +337,8 @@ export function DevicesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Devices</h1>
-          <p className="text-muted-foreground">Manage your e-ink devices</p>
+          <h1 className="text-2xl font-semibold">{t("devices.title")}</h1>
+          <p className="text-muted-foreground">{t("devices.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -346,11 +349,11 @@ export function DevicesPage() {
             {refreshingStatuses
               ? <Spinner data-icon="inline-start" />
               : <RefreshCw data-icon="inline-start" />}
-            {refreshingStatuses ? "Refreshing..." : "Refresh Statuses"}
+            {refreshingStatuses ? t("devices.refreshing") : t("devices.refreshStatuses")}
           </Button>
           <Button onClick={openCreateDialog} disabled={!credentials.length}>
             <Plus data-icon="inline-start" />
-            Add Device
+            {t("devices.add")}
           </Button>
         </div>
       </div>
@@ -359,19 +362,19 @@ export function DevicesPage() {
         <CardContent className="pt-6">
           <FieldGroup className="grid gap-4 md:grid-cols-4">
             <Field>
-              <FieldLabel htmlFor="device-search">Search</FieldLabel>
+              <FieldLabel htmlFor="device-search">{t("common.search")}</FieldLabel>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input id="device-search" className="pl-8" value={search} onChange={(event) => updateFilter("q", event.target.value)} placeholder="Name or device ID" />
+                <Input id="device-search" className="pl-8" value={search} onChange={(event) => updateFilter("q", event.target.value)} placeholder={t("devices.searchPlaceholder")} />
               </div>
             </Field>
             <Field>
-              <FieldLabel>Vendor</FieldLabel>
+              <FieldLabel>{t("common.vendor")}</FieldLabel>
               <Select value={vendorFilter} onValueChange={(value) => updateFilter("vendor", value)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All vendors</SelectItem>
+                    <SelectItem value="all">{t("devices.allVendors")}</SelectItem>
                     {vendors.map((vendor) => (
                       <SelectItem key={vendor.id} value={vendor.id}>{vendor.label}</SelectItem>
                     ))}
@@ -380,12 +383,12 @@ export function DevicesPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Model</FieldLabel>
+              <FieldLabel>{t("common.model")}</FieldLabel>
               <Select value={modelFilter} onValueChange={(value) => updateFilter("device_model", value)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All models</SelectItem>
+                    <SelectItem value="all">{t("devices.allModels")}</SelectItem>
                     {deviceModels
                       .filter((model) => vendorFilter === "all" || model.vendor_id === vendorFilter)
                       .map((model) => (
@@ -396,12 +399,12 @@ export function DevicesPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>API Key</FieldLabel>
+              <FieldLabel>{t("common.apiKey")}</FieldLabel>
               <Select value={credentialFilter} onValueChange={(value) => updateFilter("api_key_id", value)}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All API keys</SelectItem>
+                    <SelectItem value="all">{t("devices.allApiKeys")}</SelectItem>
                     {credentials
                       .filter((credential) => vendorFilter === "all" || credential.vendor === vendorFilter)
                       .map((credential) => (
@@ -418,10 +421,10 @@ export function DevicesPage() {
       {loadFailed ? (
         <Card>
           <CardHeader>
-            <CardTitle>Unable to load devices</CardTitle>
-            <CardDescription>Check the server connection and try again.</CardDescription>
+            <CardTitle>{t("devices.unableToLoad")}</CardTitle>
+            <CardDescription>{t("auth.connectionHint")}</CardDescription>
           </CardHeader>
-          <CardContent><Button onClick={() => void loadDevices()}>Try Again</Button></CardContent>
+          <CardContent><Button onClick={() => void loadDevices()}>{t("common.tryAgain")}</Button></CardContent>
         </Card>
       ) : devices.length === 0 ? (
         <Card>
@@ -429,13 +432,13 @@ export function DevicesPage() {
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Monitor /></EmptyMedia>
-                <EmptyTitle>No devices yet</EmptyTitle>
-                <EmptyDescription>Add your first e-ink device to create schedules.</EmptyDescription>
+                <EmptyTitle>{t("devices.emptyTitle")}</EmptyTitle>
+                <EmptyDescription>{t("devices.emptyDescription")}</EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button onClick={openCreateDialog} disabled={!credentials.length}>
                   <Plus data-icon="inline-start" />
-                  Add Device
+                  {t("devices.add")}
                 </Button>
               </EmptyContent>
             </Empty>
@@ -447,8 +450,8 @@ export function DevicesPage() {
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Search /></EmptyMedia>
-                <EmptyTitle>No matching devices</EmptyTitle>
-                <EmptyDescription>Change the search or filters to see more devices.</EmptyDescription>
+                <EmptyTitle>{t("devices.noMatches")}</EmptyTitle>
+                <EmptyDescription>{t("devices.noMatchesDescription")}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           </CardContent>
@@ -456,31 +459,31 @@ export function DevicesPage() {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Configured devices</CardTitle>
-            <CardDescription>Select a device to manage its schedules.</CardDescription>
+            <CardTitle>{t("devices.configured")}</CardTitle>
+            <CardDescription>{t("devices.configuredDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto p-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Device ID</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Resolution</TableHead>
-                  <TableHead>API Key</TableHead>
-                  <TableHead>Live Status</TableHead>
-                  <TableHead>Schedules</TableHead>
-                  <TableHead>Overlays</TableHead>
-                  <TableHead className="w-24 text-right">Actions</TableHead>
+                  <TableHead>{t("common.name")}</TableHead>
+                  <TableHead>{t("devices.deviceId")}</TableHead>
+                  <TableHead>{t("common.vendor")}</TableHead>
+                  <TableHead>{t("common.model")}</TableHead>
+                  <TableHead>{t("devices.resolution")}</TableHead>
+                  <TableHead>{t("common.apiKey")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                  <TableHead>{t("devices.schedules")}</TableHead>
+                  <TableHead>{t("devices.overlays")}</TableHead>
+                  <TableHead className="w-24 text-right">{t("common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visibleDevices.map((device) => {
                   const overlays = [
-                    device.show_battery_icon && "Battery",
-                    device.show_battery_percentage && "Percentage",
-                    device.show_refresh_time && "Refresh time",
+                    device.show_battery_icon && t("devices.battery"),
+                    device.show_battery_percentage && t("devices.percentage"),
+                    device.show_refresh_time && t("devices.refreshTime"),
                   ].filter(Boolean) as string[];
                   return (
                     <TableRow key={device.id}>
@@ -497,27 +500,25 @@ export function DevicesPage() {
                       </TableCell>
                       <TableCell>{device.api_credential_name}</TableCell>
                       <TableCell>
-                        {device.vendor_capabilities.includes("status") ? (
+                        {device.vendor === "zectrix" ? (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        ) : device.vendor_capabilities.includes("status") ? (
                           <div className="flex min-w-44 flex-col gap-1 text-sm">
-                            <div className="flex flex-wrap items-center gap-1">
-                              <Badge
-                                variant={device.status_policy?.state === "error" ? "destructive" : "secondary"}
-                              >
-                                {device.status_policy?.state ?? "pending"}
-                              </Badge>
-                              <span>{device.remote_status?.current || "Waiting for status"}</span>
-                            </div>
-                            {device.remote_status && (
-                              <span className="text-muted-foreground">
-                                {device.remote_status.battery || "Battery —"} · {device.remote_status.wifi || "Wi-Fi —"}
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <span>
+                                {device.remote_status?.battery || t("devices.batteryUnknown")} ·{" "}
+                                {device.remote_status?.current || t("devices.waitingStatus")}
                               </span>
-                            )}
+                              {device.status_policy?.state === "refreshing" && (
+                                <Spinner aria-label={t("devices.statusRefreshingAria", { name: device.name })} />
+                              )}
+                            </div>
                             <span className="text-xs text-muted-foreground">
-                              Updated {formatStatusTimestamp(device.status_policy?.last_success_at ?? null)}
+                              {t("devices.updatedAt", { time: formatStatusTimestamp(device.status_policy?.last_success_at ?? null, i18n.resolvedLanguage) })}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Status unavailable</span>
+                          <span className="text-sm text-muted-foreground">{t("devices.statusUnavailable")}</span>
                         )}
                       </TableCell>
                       <TableCell>{device.schedules.length}</TableCell>
@@ -525,15 +526,15 @@ export function DevicesPage() {
                         <div className="flex flex-wrap gap-1">
                           {overlays.length
                             ? overlays.map((overlay) => <Badge key={overlay} variant="secondary">{overlay}</Badge>)
-                            : <span className="text-sm text-muted-foreground">None</span>}
+                            : <span className="text-sm text-muted-foreground">{t("common.none")}</span>}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon-sm" aria-label={`Edit ${device.name}`} onClick={() => openEditDialog(device)}>
+                          <Button variant="ghost" size="icon-sm" aria-label={t("devices.editAria", { name: device.name })} onClick={() => openEditDialog(device)}>
                             <Pencil />
                           </Button>
-                          <Button variant="ghost" size="icon-sm" aria-label={`Delete ${device.name}`} onClick={() => setDeleteConfirm(device)}>
+                          <Button variant="ghost" size="icon-sm" aria-label={t("devices.deleteAria", { name: device.name })} onClick={() => setDeleteConfirm(device)}>
                             <Trash2 />
                           </Button>
                         </div>
@@ -550,20 +551,20 @@ export function DevicesPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => !saving && setDialogOpen(open)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingDevice ? "Edit Device" : "Add Device"}</DialogTitle>
+            <DialogTitle>{editingDevice ? t("devices.edit") : t("devices.add")}</DialogTitle>
             <DialogDescription>
               {editingDevice
-                ? "Update device settings. Vendor and model cannot be changed."
-                : "Choose a vendor, credential, and device model."}
+                ? t("devices.editDescription")
+                : t("devices.createDescription")}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             {!editingDevice && (
               <Field data-invalid={Boolean(formErrors.vendor)}>
-                <FieldLabel>Vendor*</FieldLabel>
+                <FieldLabel>{t("common.vendor")}*</FieldLabel>
                 <Select value={formVendor} onValueChange={handleVendorChange} disabled={saving}>
                   <SelectTrigger className="w-full" aria-invalid={Boolean(formErrors.vendor)}>
-                    <SelectValue placeholder="Select a vendor" />
+                    <SelectValue placeholder={t("devices.selectVendor")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
@@ -577,7 +578,7 @@ export function DevicesPage() {
               </Field>
             )}
             <Field data-invalid={Boolean(formErrors.api_credential_id)}>
-              <FieldLabel>API Key*</FieldLabel>
+              <FieldLabel>{t("common.apiKey")}*</FieldLabel>
               <Select
                 value={formCredentialId}
                 onValueChange={(value) => {
@@ -587,7 +588,7 @@ export function DevicesPage() {
                 disabled={saving}
               >
                 <SelectTrigger className="w-full" aria-invalid={Boolean(formErrors.api_credential_id)}>
-                  <SelectValue placeholder="Select an API key" />
+                  <SelectValue placeholder={t("devices.selectApiKey")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -601,20 +602,20 @@ export function DevicesPage() {
               </Select>
               <FieldDescription>
                 {editingDevice
-                  ? "Devices can only be reassigned within the same vendor."
-                  : "Credentials are scoped to the selected vendor."}
+                  ? t("devices.reassignScope")
+                  : t("devices.credentialScope")}
               </FieldDescription>
               <FieldError>{formErrors.api_credential_id}</FieldError>
             </Field>
             <Field data-invalid={Boolean(formErrors.device_model)}>
-              <FieldLabel>Device Model*</FieldLabel>
+              <FieldLabel>{t("devices.deviceModel")}*</FieldLabel>
               {editingDevice ? (
                 <>
                   <Input value={editingDevice.device_model_label} disabled />
                   <FieldDescription>
                     {editingDevice.display_width}×{editingDevice.display_height}
                     {" · "}
-                    {editingDevice.display_capabilities.includes("text") ? "Text + image" : "Image only"}
+                    {editingDevice.display_capabilities.includes("text") ? t("devices.textAndImage") : t("devices.imageOnly")}
                   </FieldDescription>
                 </>
               ) : (
@@ -630,7 +631,7 @@ export function DevicesPage() {
                     disabled={saving || !formVendor}
                   >
                     <SelectTrigger className="w-full" aria-invalid={Boolean(formErrors.device_model)}>
-                      <SelectValue placeholder="Select a model" />
+                      <SelectValue placeholder={t("devices.selectModel")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -643,20 +644,20 @@ export function DevicesPage() {
                     </SelectContent>
                   </Select>
                   {selectedModel && (
-                    <FieldDescription>{selectedModel.description}</FieldDescription>
+                    <FieldDescription>{modelDescription(t, selectedModel)}</FieldDescription>
                   )}
                   <FieldError>{formErrors.device_model}</FieldError>
                 </>
               )}
             </Field>
             <Field data-invalid={Boolean(formErrors.name)}>
-              <FieldLabel htmlFor="device-name">Name*</FieldLabel>
+              <FieldLabel htmlFor="device-name">{t("common.name")}*</FieldLabel>
               <Input id="device-name" value={formName} onChange={(event) => setFormName(event.target.value)} aria-invalid={Boolean(formErrors.name)} disabled={saving} />
               <FieldError>{formErrors.name}</FieldError>
             </Field>
             <Field data-invalid={Boolean(formErrors.device_id)}>
               <FieldLabel htmlFor="device-id">
-                {selectedModel?.device_id_label || editingDevice?.device_model_label || "Device ID"}*
+                {selectedModel ? modelDeviceIdLabel(t, selectedModel) : t("devices.deviceId")}*
               </FieldLabel>
               <Input
                 id="device-id"
@@ -673,14 +674,14 @@ export function DevicesPage() {
               <>
                 <Field orientation="horizontal">
                   <FieldContent>
-                    <FieldLabel htmlFor="battery-icon">Battery Icon</FieldLabel>
-                    <FieldDescription>Show a battery symbol on image-based content.</FieldDescription>
+                    <FieldLabel htmlFor="battery-icon">{t("devices.batteryIcon")}</FieldLabel>
+                    <FieldDescription>{t("devices.batteryIconDescription")}</FieldDescription>
                   </FieldContent>
                   <Switch id="battery-icon" checked={formBatteryIcon} onCheckedChange={setFormBatteryIcon} disabled={saving} />
                 </Field>
                 <Field orientation="horizontal">
                   <FieldContent>
-                    <FieldLabel htmlFor="battery-percent">Battery Percentage</FieldLabel>
+                    <FieldLabel htmlFor="battery-percent">{t("devices.batteryPercentage")}</FieldLabel>
                   </FieldContent>
                   <Switch id="battery-percent" checked={formBatteryPercent} onCheckedChange={setFormBatteryPercent} disabled={saving} />
                 </Field>
@@ -690,21 +691,21 @@ export function DevicesPage() {
               && !editingDevice.display_capabilities.includes("battery_overlay")
               && (editingDevice.show_battery_icon || editingDevice.show_battery_percentage) && (
               <FieldDescription>
-                Battery overlays are not supported on this model and will be cleared on save.
+                {t("devices.batteryUnsupported")}
               </FieldDescription>
             )}
             <Field orientation="horizontal">
               <FieldContent>
-                <FieldLabel htmlFor="refresh-time">Refresh Time</FieldLabel>
+                <FieldLabel htmlFor="refresh-time">{t("devices.refreshTimeLabel")}</FieldLabel>
               </FieldContent>
               <Switch id="refresh-time" checked={formRefreshTime} onCheckedChange={setFormRefreshTime} disabled={saving} />
             </Field>
           </FieldGroup>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>{t("common.cancel")}</Button>
             <Button onClick={() => void handleSave()} disabled={saving}>
               {saving && <Spinner data-icon="inline-start" />}
-              {saving ? "Saving..." : editingDevice ? "Save Changes" : "Create Device"}
+              {saving ? t("common.saving") : editingDevice ? t("devices.saveChanges") : t("devices.createDevice")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -713,19 +714,19 @@ export function DevicesPage() {
       <AlertDialog open={Boolean(deleteConfirm)} onOpenChange={(open) => !open && !deleting && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteConfirm?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>{t("devices.deleteTitle", { name: deleteConfirm?.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              All schedules for this device will also be deleted. This action cannot be undone.
+              {t("devices.deleteDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={(event) => {
               event.preventDefault();
               void handleDelete();
             }} disabled={deleting}>
               {deleting && <Spinner data-icon="inline-start" />}
-              {deleting ? "Deleting..." : "Delete"}
+              {deleting ? t("common.deleting") : t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { beforeEach } from "vitest";
 
 Object.defineProperties(HTMLElement.prototype, {
   hasPointerCapture: { configurable: true, value: () => false },
@@ -16,4 +17,11 @@ Object.defineProperty(globalThis, "localStorage", {
     removeItem: (key: string) => storage.delete(key),
     clear: () => storage.clear(),
   },
+});
+
+const { default: i18n } = await import("@/i18n");
+
+beforeEach(async () => {
+  localStorage.clear();
+  await i18n.changeLanguage("en-US");
 });

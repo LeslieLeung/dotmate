@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BatteryCharging, Clock3, RefreshCw, Settings2, SkipForward, Wifi } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,7 @@ import {
 } from "@/lib/device-status";
 
 export function RemoteDevicePanel({ device }: { device: Device }) {
+  const { t, i18n } = useTranslation();
   const supportsStatus = device.vendor_capabilities.includes("status");
   const supportsSettings = device.vendor_capabilities.includes("settings");
   const supportsTimezones = device.vendor_capabilities.includes("timezones");
@@ -166,7 +168,7 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
       try {
         setTimezones(await devicesApi.remoteTimezones(device.id));
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Unable to load timezones");
+        toast.error(error instanceof Error ? error.message : t("remote.timezonesFailed"));
       }
     }
   }
@@ -175,12 +177,12 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
     const errors: Record<string, string> = {};
     const power = powerMinutes ? Number(powerMinutes) : null;
     const battery = batteryMinutes ? Number(batteryMinutes) : null;
-    if (power !== null && (!Number.isInteger(power) || power < 1 || power > 720)) errors.power_interval_minutes = "Enter a whole number from 1 to 720";
-    if (battery !== null && (!Number.isInteger(battery) || battery < 1 || battery > 720)) errors.battery_interval_minutes = "Enter a whole number from 1 to 720";
-    if (!/^\d{2}:\d{2}$/.test(sleepStart)) errors.sleep_start = "Use HH:mm";
-    if (!/^\d{2}:\d{2}$/.test(sleepEnd)) errors.sleep_end = "Use HH:mm";
-    if (sleepStart === sleepEnd) errors.sleep_end = "Start and end must be different";
-    if (supportsTimezones && !timezone) errors.timezone = "Timezone is required";
+    if (power !== null && (!Number.isInteger(power) || power < 1 || power > 720)) errors.power_interval_minutes = t("remote.wholeNumber");
+    if (battery !== null && (!Number.isInteger(battery) || battery < 1 || battery > 720)) errors.battery_interval_minutes = t("remote.wholeNumber");
+    if (!/^\d{2}:\d{2}$/.test(sleepStart)) errors.sleep_start = t("remote.timeFormat");
+    if (!/^\d{2}:\d{2}$/.test(sleepEnd)) errors.sleep_end = t("remote.timeFormat");
+    if (sleepStart === sleepEnd) errors.sleep_end = t("remote.timeDifferent");
+    if (supportsTimezones && !timezone) errors.timezone = t("remote.timezoneRequired");
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -200,9 +202,9 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
       const updated = await devicesApi.updateRemoteSettings(device.id, payload);
       setSettings(updated);
       setSheetOpen(false);
-      toast.success("Device settings updated");
+      toast.success(t("remote.settingsUpdated"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update device settings");
+      toast.error(error instanceof Error ? error.message : t("remote.settingsUpdateFailed"));
     } finally {
       setSaving(false);
     }
@@ -211,11 +213,11 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
   async function switchNext() {
     setSwitching(true);
     try {
-      const response = await devicesApi.nextContent(device.id);
-      toast.success(response.message);
+      await devicesApi.nextContent(device.id);
+      toast.success(t("remote.contentSwitched"));
       await loadContent();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to switch content");
+      toast.error(error instanceof Error ? error.message : t("remote.contentSwitchFailed"));
     } finally {
       setSwitching(false);
     }
@@ -234,16 +236,16 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
         setStatusPolicy(latest.status_policy);
         if (statusRefreshCompleted(latest.status_policy, request.requested_at)) {
           if (latest.status_policy.last_error) {
-            toast.error(latest.status_policy.last_error);
+            toast.error(statusErrorText(latest.status_policy));
           } else {
-            toast.success("Device status refreshed");
+            toast.success(t("remote.statusRefreshed"));
           }
           return;
         }
       }
-      toast.info("Refresh is continuing in the background");
+      toast.info(t("devices.refreshContinues"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to refresh status");
+      toast.error(error instanceof Error ? error.message : t("remote.statusRefreshFailed"));
     } finally {
       setStatusRefreshing(false);
     }
@@ -262,7 +264,7 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
     if (policyMode === "custom") {
       interval = Number(policyMinutes);
       if (!Number.isInteger(interval) || interval < 1 || interval > 720) {
-        setPolicyError("Enter a whole number from 1 to 720");
+        setPolicyError(t("remote.wholeNumber"));
         return;
       }
     }
@@ -271,16 +273,26 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
       const updated = await devicesApi.updateStatusPolicy(device.id, interval);
       setStatusPolicy(updated);
       setPolicyOpen(false);
-      toast.success(interval === null ? "Status refresh follows the device" : "Status interval updated");
+      toast.success(interval === null ? t("remote.followSaved") : t("remote.intervalSaved"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update interval");
+      toast.error(error instanceof Error ? error.message : t("remote.intervalSaveFailed"));
     } finally {
       setPolicySaving(false);
     }
   }
 
   function contentSummary(item: RemoteContent) {
-    return item.title || item.message || item.signature || item.link || (item.has_image ? "Image content" : item.has_icon ? "Icon content" : "—");
+    return item.title || item.message || item.signature || item.link || (item.has_image ? t("remote.imageContent") : item.has_icon ? t("remote.iconContent") : "—");
+  }
+
+  function statusErrorText(policy: DeviceStatusPolicy): string {
+    if (policy.last_error_code) {
+      return t(`errors.${policy.last_error_code}`, {
+        ...policy.last_error_params,
+        defaultValue: t("errors.generic"),
+      });
+    }
+    return policy.last_error || t("errors.generic");
   }
 
   return (
@@ -289,19 +301,19 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle>Device status</CardTitle>
-              <CardDescription>Latest status cached by the background worker.</CardDescription>
+              <CardTitle>{t("remote.statusTitle")}</CardTitle>
+              <CardDescription>{t("remote.statusDescription")}</CardDescription>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={openPolicy} disabled={policySaving}>
                 <Clock3 data-icon="inline-start" />
-                Refresh interval
+                {t("remote.refreshInterval")}
               </Button>
               <Button onClick={() => void refreshStatus()} disabled={statusRefreshing}>
                 {statusRefreshing
                   ? <Spinner data-icon="inline-start" />
                   : <RefreshCw data-icon="inline-start" />}
-                {statusRefreshing ? "Refreshing..." : "Refresh now"}
+                {statusRefreshing ? t("devices.refreshing") : t("remote.refreshNow")}
               </Button>
             </div>
           </div>
@@ -311,32 +323,32 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={statusPolicy.state === "stale" ? "outline" : "secondary"}>
-                  {statusPolicy.state}
+                  {t(`status.${statusPolicy.state}`)}
                 </Badge>
-                <span className="font-medium">{remoteStatus.current || "Unknown status"}</span>
+                <span className="font-medium">{remoteStatus.current || t("remote.unknownStatus")}</span>
                 {remoteStatus.description && (
                   <span className="text-sm text-muted-foreground">{remoteStatus.description}</span>
                 )}
               </div>
               <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div><dt className="flex items-center gap-1 text-sm text-muted-foreground"><BatteryCharging />Battery</dt><dd>{remoteStatus.battery || "—"}</dd></div>
+                <div><dt className="flex items-center gap-1 text-sm text-muted-foreground"><BatteryCharging />{t("devices.battery")}</dt><dd>{remoteStatus.battery || "—"}</dd></div>
                 <div><dt className="flex items-center gap-1 text-sm text-muted-foreground"><Wifi />Wi-Fi</dt><dd>{remoteStatus.wifi || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Firmware</dt><dd>{remoteStatus.version || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Last device render</dt><dd>{remoteStatus.last_render || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Alias</dt><dd>{remoteStatus.alias || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Location</dt><dd>{remoteStatus.location || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Display</dt><dd>{remoteStatus.rotated ? "Rotated" : "Normal"} · {remoteStatus.border === 1 ? "Black border" : "White border"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Images</dt><dd>{remoteStatus.image_count}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Next on battery</dt><dd>{remoteStatus.next_battery_render || "—"}</dd></div>
-                <div><dt className="text-sm text-muted-foreground">Next on power</dt><dd>{remoteStatus.next_power_render || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.firmware")}</dt><dd>{remoteStatus.version || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.lastRender")}</dt><dd>{remoteStatus.last_render || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("common.alias")}</dt><dd>{remoteStatus.alias || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("common.location")}</dt><dd>{remoteStatus.location || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.display")}</dt><dd>{remoteStatus.rotated ? t("remote.rotated") : t("remote.normal")} · {remoteStatus.border === 1 ? t("remote.blackBorder") : t("remote.whiteBorder")}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.images")}</dt><dd>{remoteStatus.image_count}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.nextBattery")}</dt><dd>{remoteStatus.next_battery_render || "—"}</dd></div>
+                <div><dt className="text-sm text-muted-foreground">{t("remote.nextPower")}</dt><dd>{remoteStatus.next_power_render || "—"}</dd></div>
               </dl>
             </>
           ) : statusPolicy.state === "error" ? (
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><RefreshCw /></EmptyMedia>
-                <EmptyTitle>Unable to load device status</EmptyTitle>
-                <EmptyDescription>{statusPolicy.last_error || "Try refreshing again."}</EmptyDescription>
+                <EmptyTitle>{t("remote.unableStatus")}</EmptyTitle>
+                <EmptyDescription>{statusPolicy.last_error ? statusErrorText(statusPolicy) : t("remote.tryRefresh")}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
@@ -347,13 +359,13 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
           )}
           <Separator />
           <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <div><span className="text-muted-foreground">Polling</span><p>{statusPolicy.refresh_interval_minutes === null ? `Follow device${statusPolicy.effective_interval_minutes ? ` · ${statusPolicy.effective_interval_minutes} min` : ""}${statusPolicy.interval_source && statusPolicy.interval_source !== "fallback" ? ` (${statusPolicy.interval_source})` : ""}` : `Every ${statusPolicy.refresh_interval_minutes} min`}</p></div>
-            <div><span className="text-muted-foreground">Last successful</span><p>{formatStatusTimestamp(statusPolicy.last_success_at)}</p></div>
-            <div><span className="text-muted-foreground">Last attempted</span><p>{formatStatusTimestamp(statusPolicy.last_attempt_at)}</p></div>
-            <div><span className="text-muted-foreground">Next refresh</span><p>{formatStatusTimestamp(statusPolicy.next_refresh_at)}</p></div>
+            <div><span className="text-muted-foreground">{t("remote.polling")}</span><p>{statusPolicy.refresh_interval_minutes === null ? t("remote.followDeviceDetail", { interval: statusPolicy.effective_interval_minutes ? t("remote.minutesSuffix", { count: statusPolicy.effective_interval_minutes }) : "", source: statusPolicy.interval_source && statusPolicy.interval_source !== "fallback" ? t("remote.sourceSuffix", { source: t(`remote.source.${statusPolicy.interval_source}`) }) : "" }) : t("remote.everyMinutes", { count: statusPolicy.refresh_interval_minutes })}</p></div>
+            <div><span className="text-muted-foreground">{t("remote.lastSuccessful")}</span><p>{formatStatusTimestamp(statusPolicy.last_success_at, i18n.resolvedLanguage)}</p></div>
+            <div><span className="text-muted-foreground">{t("remote.lastAttempted")}</span><p>{formatStatusTimestamp(statusPolicy.last_attempt_at, i18n.resolvedLanguage)}</p></div>
+            <div><span className="text-muted-foreground">{t("remote.nextRefresh")}</span><p>{formatStatusTimestamp(statusPolicy.next_refresh_at, i18n.resolvedLanguage)}</p></div>
           </div>
           {statusPolicy.last_error && remoteStatus && (
-            <p className="text-sm text-muted-foreground">Last refresh failed: {statusPolicy.last_error}</p>
+            <p className="text-sm text-muted-foreground">{t("remote.lastRefreshFailed", { error: statusErrorText(statusPolicy) })}</p>
           )}
         </CardContent>
       </Card>}
@@ -361,55 +373,55 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
       {supportsSettings && <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <div><CardTitle>Device settings</CardTitle><CardDescription>Live settings from {device.vendor}.</CardDescription></div>
-            <Button variant="outline" onClick={() => void openSettings()} disabled={!settings || settingsLoading}><Settings2 data-icon="inline-start" />Edit</Button>
+            <div><CardTitle>{t("remote.settingsTitle")}</CardTitle><CardDescription>{t("remote.settingsDescription", { vendor: device.vendor })}</CardDescription></div>
+            <Button variant="outline" onClick={() => void openSettings()} disabled={!settings || settingsLoading}><Settings2 data-icon="inline-start" />{t("common.edit")}</Button>
           </div>
         </CardHeader>
         <CardContent>
-          {settingsLoading ? <div className="flex flex-col gap-3"><Skeleton className="h-6 w-full" /><Skeleton className="h-6 w-full" /><Skeleton className="h-6 w-full" /></div> : settingsError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Settings2 /></EmptyMedia><EmptyTitle>Unable to load settings</EmptyTitle><EmptyDescription>The device may be offline or the API key may have expired.</EmptyDescription></EmptyHeader><Button variant="outline" onClick={() => void loadSettings()}>Try Again</Button></Empty> : settings && <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm"><dt className="text-muted-foreground">Alias</dt><dd>{settings.alias || "—"}</dd><dt className="text-muted-foreground">Location</dt><dd>{settings.location || "—"}</dd><dt className="text-muted-foreground">Timezone</dt><dd>{settings.timezone || "—"}</dd><dt className="text-muted-foreground">On power</dt><dd>{settings.power_interval_minutes ? `${settings.power_interval_minutes} min` : "—"}</dd><dt className="text-muted-foreground">On battery</dt><dd>{settings.battery_interval_minutes ? `${settings.battery_interval_minutes} min` : "—"}</dd><dt className="text-muted-foreground">Sleep</dt><dd>{settings.sleep?.enabled ? `${settings.sleep.start}–${settings.sleep.end}` : "Disabled"}</dd></dl>}
+          {settingsLoading ? <div className="flex flex-col gap-3"><Skeleton className="h-6 w-full" /><Skeleton className="h-6 w-full" /><Skeleton className="h-6 w-full" /></div> : settingsError ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Settings2 /></EmptyMedia><EmptyTitle>{t("remote.unableSettings")}</EmptyTitle><EmptyDescription>{t("remote.settingsUnavailable")}</EmptyDescription></EmptyHeader><Button variant="outline" onClick={() => void loadSettings()}>{t("common.tryAgain")}</Button></Empty> : settings && <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm"><dt className="text-muted-foreground">{t("common.alias")}</dt><dd>{settings.alias || "—"}</dd><dt className="text-muted-foreground">{t("common.location")}</dt><dd>{settings.location || "—"}</dd><dt className="text-muted-foreground">{t("remote.timezone")}</dt><dd>{settings.timezone || "—"}</dd><dt className="text-muted-foreground">{t("remote.onPower")}</dt><dd>{settings.power_interval_minutes ? t("remote.minutes", { count: settings.power_interval_minutes }) : "—"}</dd><dt className="text-muted-foreground">{t("remote.onBattery")}</dt><dd>{settings.battery_interval_minutes ? t("remote.minutes", { count: settings.battery_interval_minutes }) : "—"}</dd><dt className="text-muted-foreground">{t("remote.sleep")}</dt><dd>{settings.sleep?.enabled ? `${settings.sleep.start}–${settings.sleep.end}` : t("common.disabled")}</dd></dl>}
         </CardContent>
       </Card>}
 
       {supportsContent && <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
-            <div><CardTitle>Device content</CardTitle><CardDescription>Current loop content stored by the vendor.</CardDescription></div>
-            <div className="flex gap-1"><Button variant="outline" size="icon-sm" aria-label="Refresh device content" onClick={() => void loadContent()} disabled={contentLoading}><RefreshCw /></Button>{supportsNext && <Button onClick={() => void switchNext()} disabled={switching}>{switching ? <Spinner data-icon="inline-start" /> : <SkipForward data-icon="inline-start" />}Next content</Button>}</div>
+            <div><CardTitle>{t("remote.contentTitle")}</CardTitle><CardDescription>{t("remote.contentDescription")}</CardDescription></div>
+            <div className="flex gap-1"><Button variant="outline" size="icon-sm" aria-label={t("remote.refreshContentAria")} onClick={() => void loadContent()} disabled={contentLoading}><RefreshCw /></Button>{supportsNext && <Button onClick={() => void switchNext()} disabled={switching}>{switching ? <Spinner data-icon="inline-start" /> : <SkipForward data-icon="inline-start" />}{t("remote.nextContent")}</Button>}</div>
           </div>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
-          {contentLoading ? <div className="flex flex-col gap-3 p-6"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div> : contentError ? <div className="p-6"><Empty><EmptyHeader><EmptyMedia variant="icon"><RefreshCw /></EmptyMedia><EmptyTitle>Unable to load content</EmptyTitle><EmptyDescription>Try again when the device service is available.</EmptyDescription></EmptyHeader><Button variant="outline" onClick={() => void loadContent()}>Try Again</Button></Empty></div> : content.length ? <Table><TableHeader><TableRow><TableHead>Type</TableHead><TableHead>Key</TableHead><TableHead>Summary</TableHead></TableRow></TableHeader><TableBody>{content.map((item, index) => <TableRow key={`${item.key ?? item.type}-${index}`}><TableCell><Badge variant="secondary">{item.type}</Badge></TableCell><TableCell className="font-mono text-xs">{item.key || "—"}</TableCell><TableCell className="max-w-56 truncate">{contentSummary(item)}</TableCell></TableRow>)}</TableBody></Table> : <div className="p-6"><Empty><EmptyHeader><EmptyMedia variant="icon"><SkipForward /></EmptyMedia><EmptyTitle>No loop content</EmptyTitle><EmptyDescription>This device has no content in its loop.</EmptyDescription></EmptyHeader></Empty></div>}
+          {contentLoading ? <div className="flex flex-col gap-3 p-6"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /></div> : contentError ? <div className="p-6"><Empty><EmptyHeader><EmptyMedia variant="icon"><RefreshCw /></EmptyMedia><EmptyTitle>{t("remote.unableContent")}</EmptyTitle><EmptyDescription>{t("remote.contentUnavailable")}</EmptyDescription></EmptyHeader><Button variant="outline" onClick={() => void loadContent()}>{t("common.tryAgain")}</Button></Empty></div> : content.length ? <Table><TableHeader><TableRow><TableHead>{t("common.type")}</TableHead><TableHead>{t("common.key")}</TableHead><TableHead>{t("common.summary")}</TableHead></TableRow></TableHeader><TableBody>{content.map((item, index) => <TableRow key={`${item.key ?? item.type}-${index}`}><TableCell><Badge variant="secondary">{item.type}</Badge></TableCell><TableCell className="font-mono text-xs">{item.key || "—"}</TableCell><TableCell className="max-w-56 truncate">{contentSummary(item)}</TableCell></TableRow>)}</TableBody></Table> : <div className="p-6"><Empty><EmptyHeader><EmptyMedia variant="icon"><SkipForward /></EmptyMedia><EmptyTitle>{t("remote.noContent")}</EmptyTitle><EmptyDescription>{t("remote.noContentDescription")}</EmptyDescription></EmptyHeader></Empty></div>}
         </CardContent>
       </Card>}
 
       <Dialog open={policyOpen} onOpenChange={(open) => !policySaving && setPolicyOpen(open)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Status refresh interval</DialogTitle>
-            <DialogDescription>Follow the device wake interval or use a custom polling interval.</DialogDescription>
+            <DialogTitle>{t("remote.intervalTitle")}</DialogTitle>
+            <DialogDescription>{t("remote.intervalDescription")}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="status-policy-mode">Mode</FieldLabel>
+              <FieldLabel htmlFor="status-policy-mode">{t("remote.mode")}</FieldLabel>
               <Select value={policyMode} onValueChange={(value) => { setPolicyMode(value as "follow" | "custom"); setPolicyError(""); }} disabled={policySaving}>
                 <SelectTrigger id="status-policy-mode" className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectGroup><SelectItem value="follow">Follow device</SelectItem><SelectItem value="custom">Custom interval</SelectItem></SelectGroup></SelectContent>
+                <SelectContent><SelectGroup><SelectItem value="follow">{t("remote.followDevice")}</SelectItem><SelectItem value="custom">{t("remote.customInterval")}</SelectItem></SelectGroup></SelectContent>
               </Select>
-              <FieldDescription>Follow device uses its power or battery refresh interval.</FieldDescription>
+              <FieldDescription>{t("remote.followHint")}</FieldDescription>
             </Field>
             {policyMode === "custom" && (
               <Field data-invalid={Boolean(policyError)}>
-                <FieldLabel htmlFor="status-refresh-minutes">Interval (minutes)</FieldLabel>
+                <FieldLabel htmlFor="status-refresh-minutes">{t("remote.intervalMinutes")}</FieldLabel>
                 <Input id="status-refresh-minutes" type="number" min="1" max="720" step="1" value={policyMinutes} onChange={(event) => { setPolicyMinutes(event.target.value); setPolicyError(""); }} aria-invalid={Boolean(policyError)} disabled={policySaving} />
                 <FieldError>{policyError}</FieldError>
               </Field>
             )}
           </FieldGroup>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPolicyOpen(false)} disabled={policySaving}>Cancel</Button>
+            <Button variant="outline" onClick={() => setPolicyOpen(false)} disabled={policySaving}>{t("common.cancel")}</Button>
             <Button onClick={() => void saveStatusPolicy()} disabled={policySaving}>
               {policySaving && <Spinner data-icon="inline-start" />}
-              {policySaving ? "Saving..." : "Save"}
+              {policySaving ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -417,17 +429,17 @@ export function RemoteDevicePanel({ device }: { device: Device }) {
 
       <Sheet open={sheetOpen} onOpenChange={(open) => !saving && setSheetOpen(open)}>
         <SheetContent className="w-full gap-0 sm:max-w-xl" showCloseButton={!saving}>
-          <SheetHeader><SheetTitle>Edit device settings</SheetTitle><SheetDescription>Changes are sent directly to {device.vendor}.</SheetDescription></SheetHeader><Separator />
+          <SheetHeader><SheetTitle>{t("remote.editSettings")}</SheetTitle><SheetDescription>{t("remote.editSettingsDescription", { vendor: device.vendor })}</SheetDescription></SheetHeader><Separator />
           <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4"><FieldGroup>
-            <Field><FieldLabel htmlFor="remote-alias">Alias</FieldLabel><Input id="remote-alias" value={alias} onChange={(event) => setAlias(event.target.value)} maxLength={100} disabled={saving} /><FieldDescription>Leave empty to clear the remote alias.</FieldDescription></Field>
-            <Field><FieldLabel htmlFor="remote-location">Location</FieldLabel><Input id="remote-location" value={location} onChange={(event) => setLocation(event.target.value)} maxLength={100} disabled={saving} /></Field>
-            {supportsTimezones && <Field data-invalid={Boolean(formErrors.timezone)}><FieldLabel>Timezone*</FieldLabel><Select value={timezone} onValueChange={setTimezone} disabled={saving}><SelectTrigger className="w-full" aria-invalid={Boolean(formErrors.timezone)}><SelectValue placeholder="Select a timezone" /></SelectTrigger><SelectContent><SelectGroup>{timezones.map((item) => <SelectItem key={item.key} value={item.key}>{item.name} ({item.utc_offset_label})</SelectItem>)}</SelectGroup></SelectContent></Select><FieldError>{formErrors.timezone}</FieldError></Field>}
-            <Field data-invalid={Boolean(formErrors.power_interval_minutes)}><FieldLabel htmlFor="power-interval">Refresh on power (minutes)</FieldLabel><Input id="power-interval" type="number" min="1" max="720" step="1" value={powerMinutes} onChange={(event) => setPowerMinutes(event.target.value)} aria-invalid={Boolean(formErrors.power_interval_minutes)} disabled={saving} /><FieldError>{formErrors.power_interval_minutes}</FieldError></Field>
-            <Field data-invalid={Boolean(formErrors.battery_interval_minutes)}><FieldLabel htmlFor="battery-interval">Refresh on battery (minutes)</FieldLabel><Input id="battery-interval" type="number" min="1" max="720" step="1" value={batteryMinutes} onChange={(event) => setBatteryMinutes(event.target.value)} aria-invalid={Boolean(formErrors.battery_interval_minutes)} disabled={saving} /><FieldError>{formErrors.battery_interval_minutes}</FieldError></Field>
-            <Field orientation="horizontal"><FieldContent><FieldLabel htmlFor="sleep-enabled">Sleep schedule</FieldLabel><FieldDescription>Pause automatic refreshes during this local time window.</FieldDescription></FieldContent><Switch id="sleep-enabled" checked={sleepEnabled} onCheckedChange={setSleepEnabled} disabled={saving} /></Field>
-            <div className="grid grid-cols-2 gap-4"><Field data-invalid={Boolean(formErrors.sleep_start)}><FieldLabel htmlFor="sleep-start">Starts</FieldLabel><Input id="sleep-start" type="time" value={sleepStart} onChange={(event) => setSleepStart(event.target.value)} aria-invalid={Boolean(formErrors.sleep_start)} disabled={saving} /><FieldError>{formErrors.sleep_start}</FieldError></Field><Field data-invalid={Boolean(formErrors.sleep_end)}><FieldLabel htmlFor="sleep-end">Ends</FieldLabel><Input id="sleep-end" type="time" value={sleepEnd} onChange={(event) => setSleepEnd(event.target.value)} aria-invalid={Boolean(formErrors.sleep_end)} disabled={saving} /><FieldError>{formErrors.sleep_end}</FieldError></Field></div>
+            <Field><FieldLabel htmlFor="remote-alias">{t("common.alias")}</FieldLabel><Input id="remote-alias" value={alias} onChange={(event) => setAlias(event.target.value)} maxLength={100} disabled={saving} /><FieldDescription>{t("remote.clearAliasHint")}</FieldDescription></Field>
+            <Field><FieldLabel htmlFor="remote-location">{t("common.location")}</FieldLabel><Input id="remote-location" value={location} onChange={(event) => setLocation(event.target.value)} maxLength={100} disabled={saving} /></Field>
+            {supportsTimezones && <Field data-invalid={Boolean(formErrors.timezone)}><FieldLabel>{t("remote.timezone")}*</FieldLabel><Select value={timezone} onValueChange={setTimezone} disabled={saving}><SelectTrigger className="w-full" aria-invalid={Boolean(formErrors.timezone)}><SelectValue placeholder={t("remote.selectTimezone")} /></SelectTrigger><SelectContent><SelectGroup>{timezones.map((item) => <SelectItem key={item.key} value={item.key}>{item.name} ({item.utc_offset_label})</SelectItem>)}</SelectGroup></SelectContent></Select><FieldError>{formErrors.timezone}</FieldError></Field>}
+            <Field data-invalid={Boolean(formErrors.power_interval_minutes)}><FieldLabel htmlFor="power-interval">{t("remote.refreshPower")}</FieldLabel><Input id="power-interval" type="number" min="1" max="720" step="1" value={powerMinutes} onChange={(event) => setPowerMinutes(event.target.value)} aria-invalid={Boolean(formErrors.power_interval_minutes)} disabled={saving} /><FieldError>{formErrors.power_interval_minutes}</FieldError></Field>
+            <Field data-invalid={Boolean(formErrors.battery_interval_minutes)}><FieldLabel htmlFor="battery-interval">{t("remote.refreshBattery")}</FieldLabel><Input id="battery-interval" type="number" min="1" max="720" step="1" value={batteryMinutes} onChange={(event) => setBatteryMinutes(event.target.value)} aria-invalid={Boolean(formErrors.battery_interval_minutes)} disabled={saving} /><FieldError>{formErrors.battery_interval_minutes}</FieldError></Field>
+            <Field orientation="horizontal"><FieldContent><FieldLabel htmlFor="sleep-enabled">{t("remote.sleepSchedule")}</FieldLabel><FieldDescription>{t("remote.sleepDescription")}</FieldDescription></FieldContent><Switch id="sleep-enabled" checked={sleepEnabled} onCheckedChange={setSleepEnabled} disabled={saving} /></Field>
+            <div className="grid grid-cols-2 gap-4"><Field data-invalid={Boolean(formErrors.sleep_start)}><FieldLabel htmlFor="sleep-start">{t("remote.starts")}</FieldLabel><Input id="sleep-start" type="time" value={sleepStart} onChange={(event) => setSleepStart(event.target.value)} aria-invalid={Boolean(formErrors.sleep_start)} disabled={saving} /><FieldError>{formErrors.sleep_start}</FieldError></Field><Field data-invalid={Boolean(formErrors.sleep_end)}><FieldLabel htmlFor="sleep-end">{t("remote.ends")}</FieldLabel><Input id="sleep-end" type="time" value={sleepEnd} onChange={(event) => setSleepEnd(event.target.value)} aria-invalid={Boolean(formErrors.sleep_end)} disabled={saving} /><FieldError>{formErrors.sleep_end}</FieldError></Field></div>
           </FieldGroup></div>
-          <Separator /><SheetFooter className="flex-row justify-end"><Button variant="outline" onClick={() => setSheetOpen(false)} disabled={saving}>Cancel</Button><Button onClick={() => void saveSettings()} disabled={saving}>{saving && <Spinner data-icon="inline-start" />}{saving ? "Saving..." : "Save Changes"}</Button></SheetFooter>
+          <Separator /><SheetFooter className="flex-row justify-end"><Button variant="outline" onClick={() => setSheetOpen(false)} disabled={saving}>{t("common.cancel")}</Button><Button onClick={() => void saveSettings()} disabled={saving}>{saving && <Spinner data-icon="inline-start" />}{saving ? t("common.saving") : t("devices.saveChanges")}</Button></SheetFooter>
         </SheetContent>
       </Sheet>
     </div>

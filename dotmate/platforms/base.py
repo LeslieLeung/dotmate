@@ -27,6 +27,21 @@ class DeviceStatus(BaseModel):
     renderInfo: dict = Field(default_factory=dict)
 
 
+class RemoteDevice(BaseModel):
+    """Vendor-neutral discovered device summary used for credential sync.
+
+    MindReset returns series/model/edition; Zectrix returns deviceId/alias/board
+    (mapped to id/alias/model). Sync only requires ``id`` and optionally ``alias``.
+    """
+
+    id: str
+    alias: Optional[str] = None
+    location: Optional[str] = None
+    series: Optional[str] = None
+    model: Optional[str] = None
+    edition: Optional[int] = None
+
+
 # --------------------------------------------------------------------------- #
 # Platform profile: resolution + capability descriptor
 # --------------------------------------------------------------------------- #

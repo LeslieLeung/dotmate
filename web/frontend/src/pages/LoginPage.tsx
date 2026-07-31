@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,6 +17,7 @@ import { authApi } from "@/lib/api";
 import { getToken, setToken } from "@/lib/auth";
 
 export function LoginPage() {
+  const { t } = useTranslation();
   const [token, setTokenValue] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(true);
@@ -31,19 +33,19 @@ export function LoginPage() {
         if (!status.auth_required || status.authenticated) navigate("/", { replace: true });
       })
       .catch(() => {
-        if (active) setError("Unable to reach the server");
+        if (active) setError(t("auth.unableToReach"));
       })
       .finally(() => {
         if (active) setChecking(false);
       });
     return () => { active = false; };
-  }, [navigate]);
+  }, [navigate, t]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const value = token.trim();
     if (!value) {
-      setError("Admin token is required");
+      setError(t("auth.tokenRequired"));
       return;
     }
 
@@ -55,10 +57,10 @@ export function LoginPage() {
         setToken(value);
         navigate("/", { replace: true });
       } else {
-        setError("Invalid admin token");
+        setError(t("auth.invalidToken"));
       }
     } catch {
-      setError("Unable to verify the token. Check the server connection.");
+      setError(t("auth.unableToVerifyToken"));
     } finally {
       setSubmitting(false);
     }
@@ -68,18 +70,18 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center p-6">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Dotmate Admin</CardTitle>
-          <CardDescription>Enter the admin token configured on the server.</CardDescription>
+          <CardTitle>{t("app.title")}</CardTitle>
+          <CardDescription>{t("auth.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
             <FieldGroup>
               <Field data-invalid={Boolean(error)}>
-                <FieldLabel htmlFor="token">Admin Token</FieldLabel>
+                <FieldLabel htmlFor="token">{t("auth.token")}</FieldLabel>
                 <Input
                   id="token"
                   type="password"
-                  placeholder="Enter admin token"
+                  placeholder={t("auth.tokenPlaceholder")}
                   value={token}
                   onChange={(event) => {
                     setTokenValue(event.target.value);
@@ -93,7 +95,7 @@ export function LoginPage() {
               </Field>
               <Button type="submit" className="w-full" disabled={checking || submitting}>
                 {(checking || submitting) && <Spinner data-icon="inline-start" />}
-                {checking ? "Checking..." : submitting ? "Signing in..." : "Sign In"}
+                {checking ? t("auth.checking") : submitting ? t("auth.signingIn") : t("auth.signIn")}
               </Button>
             </FieldGroup>
           </form>

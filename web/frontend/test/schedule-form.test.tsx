@@ -73,6 +73,7 @@ describe("ScheduleForm", () => {
 
     render(
       <ScheduleForm
+        type="text"
         definition={nullableDefinition}
         values={{ message: null, token: null, border: 0 }}
         errors={{}}
@@ -87,6 +88,7 @@ describe("ScheduleForm", () => {
   it("renders appropriate controls and inline errors without hidden fields", () => {
     render(
       <ScheduleForm
+        type="text"
         definition={definition}
         values={{ message: "Hello", token: "secret", border: 0 }}
         errors={{ message: "Message is required" }}

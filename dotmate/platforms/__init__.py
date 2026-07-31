@@ -11,6 +11,7 @@ from dotmate.platforms.base import (
     ImagePayload,
     PlatformClient,
     PlatformProfile,
+    RemoteDevice,
     TextPayload,
 )
 from dotmate.platforms.demo import DemoClient
@@ -21,6 +22,7 @@ from dotmate.platforms.zectrix import NOTE4_PROFILE, ZectrixClient
 __all__ = [
     "ApiResponse",
     "DeviceStatus",
+    "RemoteDevice",
     "ImagePayload",
     "TextPayload",
     "PlatformClient",
