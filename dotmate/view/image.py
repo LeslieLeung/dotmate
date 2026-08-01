@@ -318,3 +318,4 @@ class ImageView(BaseView):
             )
         except Exception as e:
             print(f"Error sending image to {self.device_id}: {e}")
+            raise

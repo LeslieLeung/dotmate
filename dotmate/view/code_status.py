@@ -215,6 +215,8 @@ class CodeStatusView(ImageView):
                 super().execute(image_params)
             except Exception as img_error:
                 print(f"Failed to generate error image: {img_error}")
+                raise
 
         except Exception as e:
             print(f"Error in CodeStatusView: {e}")
+            raise

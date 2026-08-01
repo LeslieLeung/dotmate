@@ -3,10 +3,11 @@
 from io import BytesIO
 from unittest.mock import MagicMock
 
+import pytest
 from PIL import Image
 
 from dotmate.api.api import DeviceRuntimeStatus, DeviceStatus
-from dotmate.view.image import ImageView
+from dotmate.view.image import ImageParams, ImageView
 
 
 def _blank_png(width: int = 296, height: int = 152) -> bytes:
@@ -53,3 +54,12 @@ def test_draw_overlay_reads_battery_from_dict_status():
     client.get_device_status.assert_called_once_with("device-1")
     assert isinstance(result, bytes)
     assert len(result) > 0
+
+
+def test_image_push_failure_is_propagated():
+    client = MagicMock()
+    client.display_image.side_effect = RuntimeError("vendor unavailable")
+    view = ImageView(client, "device-1")
+
+    with pytest.raises(RuntimeError, match="vendor unavailable"):
+        view.execute(ImageParams(image_data=_blank_png()))

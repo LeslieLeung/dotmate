@@ -48,8 +48,8 @@ class PlatformRegistry:
             )
 
     @classmethod
-    def create_client(cls, name: str, config, device) -> PlatformClient:
-        """Build a client for ``name`` using credentials from config/device.
+    def resolve_api_key(cls, name: str, config, device) -> str:
+        """Resolve a device credential for client reuse.
 
         Credential resolution: ``device.api_key`` overrides the platform-level
         key configured under ``config.platforms[<name>]``.
@@ -58,20 +58,25 @@ class PlatformRegistry:
             raise ValueError(
                 f"Unknown platform '{name}'. Supported: {cls.available()}"
             )
-        client_class, _ = cls._platforms[name]
 
         api_key = device.api_key
         if not api_key:
             platform_cfg = getattr(config, "platforms", {}).get(name)
             if platform_cfg is not None:
                 api_key = getattr(platform_cfg, "api_key", None)
-
         if not api_key:
             raise ValueError(
                 f"Device '{device.name}' uses platform '{name}' but no API key "
                 f"is configured. Set platforms.{name}.api_key in config or "
                 "api_key on the device."
             )
+        return api_key
+
+    @classmethod
+    def create_client(cls, name: str, config, device) -> PlatformClient:
+        """Build a client for ``name`` using credentials from config/device."""
+        api_key = cls.resolve_api_key(name, config, device)
+        client_class, _ = cls._platforms[name]
 
         request_interval = getattr(config, "request_interval", 1.0)
         return client_class(api_key, request_interval=request_interval)

@@ -49,6 +49,7 @@ class TextView(BaseView):
             )
         except Exception as e:
             print(f"Error sending text message to {self.device_id}: {e}")
+            raise
 
 
 # Legacy function for backward compatibility

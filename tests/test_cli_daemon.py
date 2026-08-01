@@ -64,6 +64,60 @@ def test_setup_scheduler_missing_config(tmp_path, monkeypatch):
     assert exc.value.code == 1
 
 
+def test_top_level_api_key_is_rejected(tmp_path, capsys):
+    config_path = write_cli_config(
+        tmp_path,
+        """\
+api_key: legacy-quote0-key
+devices:
+  - name: legacy
+    device_id: legacy-device
+""",
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main.setup_scheduler(str(config_path))
+
+    assert exc.value.code == 1
+    assert "platforms.quote0.api_key" in capsys.readouterr().out
+
+
+def test_setup_scheduler_reuses_client_for_shared_credential(tmp_path, monkeypatch):
+    config_path = write_cli_config(
+        tmp_path,
+        """\
+platforms:
+  quote0:
+    api_key: shared-key
+devices:
+  - name: first
+    device_id: first-device
+    schedules:
+      - cron: "0 9 * * *"
+        type: text
+        params:
+          message: First
+  - name: second
+    device_id: second-device
+    schedules:
+      - cron: "0 10 * * *"
+        type: text
+        params:
+          message: Second
+""",
+    )
+    shared_client = RecordingClient()
+    create_client = make_stub_create_client(shared_client)
+    monkeypatch.setattr(main.PlatformRegistry, "create_client", create_client)
+
+    scheduler = main.setup_scheduler(str(config_path))
+    jobs = scheduler.get_jobs()
+
+    assert create_client.call_count == 1
+    assert len(jobs) == 2
+    assert all(job.args[1] is shared_client for job in jobs)
+
+
 def test_start_daemon_with_no_jobs(monkeypatch):
     empty = MagicMock()
     empty.get_jobs.return_value = []

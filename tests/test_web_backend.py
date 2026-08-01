@@ -402,6 +402,34 @@ def test_run_schedule_pushes_immediately(api_client, monkeypatch):
     assert calls[0]["height"] == 152
 
 
+def test_run_schedule_reports_vendor_push_failure(api_client, monkeypatch):
+    device_id = create_device(api_client)
+    created = api_client.post(
+        f"/api/devices/{device_id}/schedules",
+        json={
+            "name": "Failed text",
+            "cron": "0 9 * * *",
+            "type": "text",
+            "params": {"message": "Hello"},
+        },
+    ).json()
+
+    class FailingClient:
+        def display_text(self, device_id, payload):
+            raise RuntimeError("vendor unavailable")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "create_vendor_client",
+        lambda vendor, key, interval: FailingClient(),
+    )
+
+    response = api_client.post(f"/api/devices/schedules/{created['id']}/run")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Unable to push schedule: vendor unavailable"
+
+
 def test_run_schedule_not_found(api_client):
     response = api_client.post("/api/devices/schedules/99999/run")
     assert response.status_code == 404

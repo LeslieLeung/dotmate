@@ -32,10 +32,17 @@ def setup_scheduler(config_path: str = "config.yaml"):
         sys.exit(1)
 
     scheduler = BlockingScheduler()
+    clients = {}
 
-    # Add jobs for each device and schedule (per-device client + profile)
+    # Add jobs for each device and schedule (shared client per credential + profile)
     for device in config.devices:
-        client = PlatformRegistry.create_client(device.platform, config, device)
+        api_key = PlatformRegistry.resolve_api_key(device.platform, config, device)
+        client_key = (device.platform, api_key)
+        if client_key not in clients:
+            clients[client_key] = PlatformRegistry.create_client(
+                device.platform, config, device
+            )
+        client = clients[client_key]
         profile = PlatformRegistry.get_profile(device.platform)
         if device.schedules:
             for schedule in device.schedules:
