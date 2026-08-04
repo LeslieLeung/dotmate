@@ -24,6 +24,7 @@ class TitleImageParams(BaseModel):
     ]] = None
     task_key: Optional[str] = None
     task_alias: Optional[Union[str, int]] = None
+    page_id: Optional[Union[str, int]] = None
 
 
 class TitleImageView(ImageView):
@@ -129,7 +130,7 @@ class TitleImageView(ImageView):
             draw.text((text_x, y_pos), text, fill=0, font=font)
 
     def _generate_title_image(self, main_title: str, sub_title: Optional[str] = None) -> bytes:
-        """Generate a 296x152 PNG image with centered titles and return PNG binary data."""
+        """Generate a device-sized PNG image with centered titles and return PNG binary data."""
         image, draw = self._create_canvas()
         width, height = image.size
         max_text_width = int(width * 2 / 3)  # Use at most 2/3 of width
@@ -137,16 +138,16 @@ class TitleImageView(ImageView):
         try:
             if sub_title:
                 # Both titles - calculate optimal sizes for each
-                available_height = height - self._s(20)  # Leave some padding
+                available_height = height - self._sz(20)  # Leave some padding
                 main_height_allocation = int(available_height * 0.6)  # 60% for main title
                 sub_height_allocation = int(available_height * 0.4)   # 40% for sub title
 
                 # Calculate optimal font sizes (in scaled coordinates)
                 main_font_size = self._calculate_optimal_font_size(
-                    main_title, max_text_width, main_height_allocation, initial_size=self._s(42)
+                    main_title, max_text_width, main_height_allocation, initial_size=self._sz(42)
                 )
                 sub_font_size = self._calculate_optimal_font_size(
-                    sub_title, max_text_width, sub_height_allocation, initial_size=self._s(32)
+                    sub_title, max_text_width, sub_height_allocation, initial_size=self._sz(32)
                 )
 
                 # Create fonts
@@ -168,14 +169,14 @@ class TitleImageView(ImageView):
                 # Calculate total text block height (remove extra spacing between lines)
                 total_main_height = len(main_lines) * main_line_height
                 total_sub_height = len(sub_lines) * sub_line_height
-                spacing = self._s(15)
+                spacing = self._sz(15)
                 total_text_height = total_main_height + total_sub_height + spacing
 
                 # Calculate starting Y position to center the entire text block
                 start_y = (height - total_text_height) // 2
 
                 # Ensure minimum top padding
-                start_y = max(start_y, self._s(10))
+                start_y = max(start_y, self._sz(10))
 
                 # Draw main title lines
                 current_y = start_y
@@ -193,9 +194,9 @@ class TitleImageView(ImageView):
 
             else:
                 # Only main title - calculate optimal size for available space
-                available_height = height - self._s(20)  # Leave some padding
+                available_height = height - self._sz(20)  # Leave some padding
                 main_font_size = self._calculate_optimal_font_size(
-                    main_title, max_text_width, available_height, initial_size=self._s(48)
+                    main_title, max_text_width, available_height, initial_size=self._sz(48)
                 )
 
                 # Create font
@@ -217,7 +218,7 @@ class TitleImageView(ImageView):
                 start_y = (height - total_text_height) // 2
 
                 # Ensure minimum top padding
-                start_y = max(start_y, self._s(10))
+                start_y = max(start_y, self._sz(10))
 
                 # Draw main title lines
                 current_y = start_y
@@ -249,6 +250,7 @@ class TitleImageView(ImageView):
             dither_kernel=title_params.dither_kernel,
             task_key=title_params.task_key,
             task_alias=title_params.task_alias,
+            page_id=title_params.page_id,
         )
 
         # Use parent's execute method

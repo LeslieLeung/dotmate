@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dotmate is a Python-based scheduler for managing Quote/0 message push notifications. It supports scheduled tasks using cron expressions to send various types of messages to devices.
+Dotmate is a Python-based scheduler for managing e-ink message push notifications. It supports Quote/0 (296x152) and Zectrix Note 4 (400x300) devices, with scheduled tasks using cron expressions to send various types of messages (Note 4 uses the image API only).
 
 ## Essential Commands
 
@@ -19,10 +19,23 @@ cp config.example.yaml config.yaml
 
 ### Running the Application
 ```bash
-# Start daemon with scheduler (default mode)
+# Start daemon with scheduler (default mode, uses config.yaml)
 python main.py daemon
 # or simply
 python main.py
+
+# Start web admin panel (builds and serves the frontend)
+make web
+# Access at http://localhost:8000
+
+# Expose beyond localhost (ADMIN_TOKEN is required)
+export ADMIN_TOKEN="your-secret-token"
+python main.py web --host 0.0.0.0
+
+# Development mode (starts both backend + frontend dev server with hot reload)
+python main.py dev
+# Backend API: http://localhost:8000
+# Frontend: http://localhost:5173
 
 # Manual message pushing
 python main.py push <device_name> <message_type> [options]
@@ -45,20 +58,23 @@ python main.py push mydevice code_plan_usage --api-url "http://your.onwatch.site
 # --dither-type "DIFFUSION|ORDERED|NONE"
 # --dither-kernel "FLOYD_STEINBERG|ATKINSON|BURKES|..." (many options available)
 
-# Generate demo PNG images without sending to device
+# Generate demo PNG images without sending to device (use --platform to target resolution)
 python main.py demo <message_type> [options]
 
 # Demo examples:
 python main.py demo title_image --main-title "测试标题" --sub-title "副标题"
 python main.py demo work --clock-in "09:00" --clock-out "18:00"
 python main.py demo title_image --main-title "测试" --output "./my-demos"
+python main.py demo title_image --main-title "Note 4" --platform zectrix  # render at 400x300
 
-# The demo command supports all the same parameters as push (except device name)
-# Generated images are saved to demos/ directory by default
+# The demo command supports all the same parameters as push (except device name).
+# Generated images are saved to demos/ directory by default. --platform selects
+# the target resolution (quote0=296x152, zectrix=400x300; default: quote0).
 ```
 
 ### Environment Requirements
 - Python >= 3.12
+- Node.js >= 20.19 (for frontend build)
 - uv package manager (recommended)
 
 ## Architecture Overview
@@ -71,21 +87,35 @@ python main.py demo title_image --main-title "测试" --output "./my-demos"
 - Uses Pydantic models for type-safe configuration parsing
 - YAML-based configuration with models: Config -> Device -> Schedule
 - Each device can have multiple scheduled tasks with cron expressions
+- Config is grouped per platform under `platforms:`; each device declares its `platform`
+- Capability validation at load time: text scenarios are rejected on image-only platforms (e.g. scheduling `text` on a `zectrix` device fails fast)
+
+**Web Admin Panel** (`web/`):
+- **Backend** (`web/backend/`): FastAPI application with SQLite database (SQLModel)
+  - REST API for device and schedule CRUD operations
+  - Token-based authentication via `ADMIN_TOKEN` environment variable
+  - Background scheduler that reads from SQLite and hot-reloads on changes
+- **Frontend** (`web/frontend/`): React + shadcn/ui single-page application
+  - Device management with overlay settings
+  - Schedule management with dynamic forms based on schedule type
+  - Global settings configuration (API key, request interval)
 
 **View System** (`dotmate/view/`):
 - Factory pattern for message type handlers
-- BaseView abstract class defines the interface for all message types
+- BaseView abstract class defines the interface for all message types; declares `requires_text` capability
 - Currently supports: work (countdown timer), text (custom messages), code_status (Wakatime integration), image (binary images), title_image (generated text images), umami_stats (Umami analytics), github_contributions (GitHub contribution heatmap), code_plan_usage (code plan quota progress bars)
 - Each view type has its own parameter model extending Pydantic BaseModel
 - Image views support dithering options and border colors for e-ink display optimization
+- Layouts are **resolution-adaptive**: views derive font/metric sizes and Y positions from the active `PlatformProfile`, so the same view renders correctly at 296x152 or 400x300
 
-**API Client** (`dotmate/api/`):
-- `api.py`: DotClient handles communication with the Quote/0 API
-- `demo.py`: DemoClient provides a mock client for generating demo images without API calls
-- All views use the same client instance for device communication
-- Supports both text display and image display endpoints
-- Image API supports advanced dithering algorithms and display options
-- DemoClient saves generated images to local filesystem for testing and preview
+**Platform System** (`dotmate/platforms/`):
+- Vendor-neutral abstraction layer; views build vendor-agnostic `ImagePayload` / `TextPayload` (defined in `base.py`) and never touch wire formats
+- `PlatformClient` is the abstract contract (`display_image` mandatory; `display_text` optional, platforms without text support inherit a NotImplemented default)
+- Each vendor lives in its own subpackage with its own client, wire-format models, and `PlatformProfile`:
+  - `platforms/quote0/`: DotClient, JSON base64 models, 296x152, supports text+image
+  - `platforms/zectrix/`: ZectrixClient, multipart models, 400x300, image-only
+- `platforms/demo.py`: DemoClient saves generated images to the local filesystem for preview/testing
+- `platforms/registry.py`: `PlatformRegistry` is the single factory — maps platform name -> (client class, profile) and resolves credentials at client creation
 
 **Font Management System** (`dotmate/font/`):
 - FontManager class provides font file discovery and loading from `dotmate/font/resource/`
@@ -109,14 +139,36 @@ For image-based message types:
 - For variable fonts, set `font_weight` (100-900) to control font weight
 - Use `_get_font(size)` method to obtain fonts with custom settings
 
+Resolution-adaptive layout helpers (on ImageView):
+- Views receive a `PlatformProfile` via the constructor (`profile=` kwarg)
+- `display_scale` property: geometric-mean scale vs the 296x152 reference
+- `_sz(base)`: font/metric size in reference units, scaled to the current resolution (and supersampling-aware)
+- `_py(ratio)`: proportional Y position as a fraction of canvas height
+- Prefer `_sz(...)` for font sizes/spacing and `_py(...)` for row baselines instead of hardcoding pixel offsets
+
+### Adding a New Platform/Vendor
+
+1. Create a subpackage under `dotmate/platforms/<name>/` with:
+   - `client.py`: a `PlatformClient` subclass translating neutral `ImagePayload`/`TextPayload` into the vendor's wire format
+   - `models.py`: vendor-specific request/response models (no cross-vendor imports)
+   - `profile.py`: a `PlatformProfile` (resolution + `supports_text`/`supports_image` capabilities)
+2. Register the platform in `PlatformRegistry._platforms` (name -> client class, profile)
+3. Add the platform's config section under `platforms:` in YAML
+
 ### Configuration Structure
 
-YAML config format:
+YAML config format (grouped per platform):
 ```yaml
-api_key: "your_api_key"
+platforms:                    # credentials grouped per vendor
+  quote0:
+    api_key: "your_quote0_api_key"
+  zectrix:
+    api_key: "zt_your_zectrix_key"   # optional, only if note4 devices exist
+request_interval: 1.0
 devices:
   - name: "device_name"
     device_id: "unique_id"
+    platform: quote0   # or zectrix (MAC address as device_id, 400x300)
     schedules:
       - cron: "*/5 * * * *"
         type: "work"
@@ -141,8 +193,8 @@ devices:
         params:
           umami_host: "https://your.umami.site"
           umami_website_id: "your-website-id"
-          umami_api_key: "your-api-key"
-          umami_time_range: "24h"
+          umami_api_key: "api-key"
+          umami_time_range: "7d"
           dither_type: "NONE"
       - cron: "0 9 * * *"
         type: "github_contributions"
@@ -155,9 +207,8 @@ devices:
         params:
           api_url: "http://your.onwatch.site"
           provider: "anthropic"
-          api_username: "your-username"
-          api_password: "your-password"
-          dither_type: "NONE"
+          api_username: "user"
+          api_password: "pass"
 ```
 
 ### Key Dependencies

@@ -19,3 +19,10 @@ wheels/
 .DS_Store
 
 config.yaml
+
+# Database
+data/
+
+# Frontend build
+web/frontend/dist/
+web/frontend/node_modules/

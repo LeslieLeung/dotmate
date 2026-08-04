@@ -4,36 +4,60 @@
 
 ```
 dotmate/
-├── main.py                 # 主程序入口
-├── config.example.yaml     # 配置文件模板
-├── pyproject.toml          # 项目依赖配置
-└── dotmate/
-    ├── api/
-    │   └── api.py          # API 客户端
-    ├── config/
-    │   └── models.py       # 配置模型
-    ├── font/
-    │   ├── manager.py      # 字体管理器
-    │   └── resource/       # 字体文件目录
-    │       ├── Hack-Bold.ttf
-    │       ├── Hack-Regular.ttf
-    │       └── SourceHanSansSC-VF.otf
-    └── view/
-        ├── base.py         # 基础视图类
-        ├── factory.py      # 视图工厂
-        ├── image.py        # 图像视图基类
-        ├── title_image.py  # 标题图像视图
-        ├── work.py         # 工作倒计时视图
-        ├── text.py         # 文本消息视图
-        ├── code_status.py  # 代码状态视图
-        ├── umami_stats.py  # Umami 统计视图
-        └── code_plan_usage.py  # 代码计划用量视图
+├── main.py                      # 主程序入口
+├── config.example.yaml          # 配置文件模板
+├── pyproject.toml               # 项目依赖配置
+├── dotmate/
+│   ├── api/
+│   │   └── api.py               # Web 管理端使用的 Quote/0 兼容客户端
+│   ├── config/
+│   │   └── models.py            # 配置模型 (Config/Device/Schedule/PlatformConfig)
+│   ├── platforms/               # ★ 厂商平台抽象层
+│   │   ├── base.py              # PlatformClient 抽象基类 + 中性 ImagePayload/TextPayload
+│   │   ├── registry.py          # PlatformRegistry 工厂 (platform -> client+profile)
+│   │   ├── demo.py              # DemoClient 本地预览
+│   │   ├── quote0/              # Quote/0 厂商包 (296x152, 文本+图片)
+│   │   │   ├── client.py        # DotClient (JSON base64)
+│   │   │   ├── models.py        # Quote/0 wire-format 模型
+│   │   │   └── profile.py       # Quote0Profile
+│   │   └── zectrix/             # Zectrix 厂商包 (400x300, 仅图片)
+│   │       ├── client.py        # ZectrixClient (multipart)
+│   │       ├── models.py        # Zectrix wire-format 模型
+│   │       └── profile.py       # Note4Profile
+│   ├── font/
+│   │   ├── manager.py           # 字体管理器
+│   │   └── resource/            # 字体文件目录
+│   │       ├── Hack-Bold.ttf
+│   │       ├── Hack-Regular.ttf
+│   │       └── SourceHanSansSC-VF.otf
+│   └── view/
+│       ├── base.py              # 基础视图类 (声明 requires_text 能力)
+│       ├── factory.py           # 视图工厂 (接收 PlatformProfile)
+│       ├── image.py             # 图像视图基类 (display_scale/_sz/_py 自适应布局)
+│       ├── title_image.py       # 标题图像视图
+│       ├── work.py              # 工作倒计时视图
+│       ├── text.py              # 文本消息视图
+│       ├── code_status.py       # 代码状态视图
+│       ├── umami_stats.py       # Umami 统计视图
+│       ├── github_contributions.py  # GitHub 贡献图视图
+│       └── code_plan_usage.py   # 代码计划用量视图
+└── web/
+    ├── backend/                 # FastAPI 后端
+    │   ├── app.py               # FastAPI 应用入口
+    │   ├── db.py                # SQLite 数据库配置
+    │   ├── models.py            # SQLModel 数据模型
+    │   ├── schemas.py           # Pydantic 请求/响应模型
+    │   ├── scheduler.py         # 后台调度器
+    │   └── routes/              # 管理端 API 路由
+    └── frontend/                # React + shadcn/ui 前端
+        └── src/                 # 页面、组件和 API 客户端
 ```
 
 ## 开发环境搭建
 
 ### 环境要求
 - Python >= 3.12
+- Node.js >= 20.19（用于前端构建）
 - uv 包管理器（推荐）
 
 ### 安装开发依赖
@@ -42,12 +66,121 @@ dotmate/
 git clone https://github.com/leslieleung/dotmate
 cd dotmate
 
-## 安装环境
+# 安装 Python 环境
 uv venv
-
-# 安装依赖
 uv sync
+
+# 安装前端依赖
+cd web/frontend
+npm install
+cd ../..
 ```
+
+### 运行模式
+
+#### 1. 传统模式 (config.yaml)
+
+使用 YAML 配置文件运行守护进程：
+
+```bash
+# 复制配置模板
+cp config.example.yaml config.yaml
+# 编辑 config.yaml 填入你的配置
+
+# 启动守护进程
+python main.py daemon
+```
+
+#### 2. Web 管理面板模式
+
+使用 SQLite 数据库和 Web 界面管理设备和调度任务：
+
+```bash
+# 设置管理员 Token（仅本机访问时可选；对外监听时必填）
+export ADMIN_TOKEN="your-secret-token"
+
+# 生产模式：构建前端并启动服务
+make web
+# 访问 http://localhost:8000
+
+# 或指定端口
+make build-frontend
+python main.py web --port 9000
+
+# 允许其他主机访问（必须先设置 ADMIN_TOKEN）
+python main.py web --host 0.0.0.0
+
+# 开发模式：同时启动后端 API 和前端开发服务器（支持热更新）
+python main.py dev
+# 后端 API: http://localhost:8000
+# 前端: http://localhost:5173
+```
+
+也可以使用 Makefile：
+
+```bash
+make dev   # 开发模式
+make web   # 生产模式（自动构建前端）
+```
+
+##### 环境变量
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `ADMIN_TOKEN` | 管理面板认证 Token；非本机监听时必填 | 空（仅允许本机免认证） |
+| `DOTMATE_DB_PATH` | SQLite 数据库路径 | `data/dotmate.db` |
+
+##### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/settings` | 获取全局设置 |
+| PUT | `/api/settings` | 更新全局设置 |
+| GET | `/api/vendors` | 获取支持的 Vendor 与能力 |
+| GET | `/api/api-keys` | 获取已绑定 API Key（仅返回掩码） |
+| POST | `/api/api-keys/batch` | 批量绑定 API Key 并导入设备 |
+| POST | `/api/api-keys/sync-all` | 同步全部 API Key 的设备 |
+| POST | `/api/api-keys/{id}/sync` | 同步单个 API Key 的设备 |
+| PUT | `/api/api-keys/{id}` | 重命名 API Key |
+| DELETE | `/api/api-keys/{id}` | 删除未被设备使用的 API Key |
+| GET | `/api/devices` | 获取所有设备 |
+| POST | `/api/devices` | 创建设备 |
+| GET | `/api/devices/{id}` | 获取单个设备 |
+| PUT | `/api/devices/{id}` | 更新设备 |
+| DELETE | `/api/devices/{id}` | 删除设备 |
+| POST | `/api/devices/remote/statuses/refresh` | 异步刷新全部设备状态 |
+| POST | `/api/devices/{id}/remote/status/refresh` | 异步刷新单台设备状态 |
+| PATCH | `/api/devices/{id}/remote/status/policy` | 设置单台设备状态轮询间隔 |
+| GET | `/api/devices/{id}/remote/settings` | 读取远端设备设置 |
+| PATCH | `/api/devices/{id}/remote/settings` | 修改远端设备设置 |
+| GET | `/api/devices/{id}/remote/timezones` | 获取 Vendor 支持的时区 |
+| POST | `/api/devices/{id}/remote/next` | 切换到下一条设备内容 |
+| GET | `/api/devices/{id}/remote/content` | 获取设备内容列表 |
+| GET | `/api/devices/{id}/schedules` | 获取设备的调度任务 |
+| POST | `/api/devices/{id}/schedules` | 创建调度任务 |
+| PUT | `/api/devices/schedules/{id}` | 更新调度任务 |
+| DELETE | `/api/devices/schedules/{id}` | 删除调度任务 |
+| GET | `/api/schema/schedule-types` | 获取调度类型 Schema |
+
+##### 前端开发
+
+```bash
+cd web/frontend
+
+# 启动开发服务器（带热更新）
+npm run dev
+
+# 构建生产版本
+npm run build
+```
+
+提交前可在项目根目录运行完整检查：
+
+```bash
+make check  # 后端测试、前端测试、lint 和生产构建
+```
+
+前端开发服务器运行在 `http://localhost:5173`，会自动代理 API 请求到后端 `http://localhost:8000`。
 
 ## 扩展开发
 
@@ -96,9 +229,11 @@ class MyCustomParams(BaseModel):
 **文本类型示例：**
 ```python
 from dotmate.view.base import BaseView
-from dotmate.api.api import DisplayTextRequest
+from dotmate.platforms.base import TextPayload
 
 class MyTextView(BaseView):
+    requires_text = True  # 声明需要文本能力（会在配置加载时校验平台支持）
+
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
         return MyCustomParams
@@ -106,18 +241,14 @@ class MyTextView(BaseView):
     def execute(self, params: BaseModel) -> None:
         custom_params = MyCustomParams(**params.model_dump())
 
-        request = DisplayTextRequest(
-            refreshNow=True,
-            deviceId=self.device_id,
+        payload = TextPayload(
             title="My Title",
             message=custom_params.required_param,
             signature=datetime.now().strftime("%H:%M"),
-            icon=None,
-            link=None,
         )
 
         try:
-            response = self.client.display_text(request)
+            response = self.client.display_text(self.device_id, payload)
             print(f"Message sent to {self.device_id}")
         except Exception as e:
             print(f"Error: {e}")
@@ -128,10 +259,10 @@ class MyTextView(BaseView):
 from dotmate.view.image import ImageView, ImageParams
 
 class MyImageView(ImageView):
-    def __init__(self, client, device_id: str):
-        super().__init__(client, device_id)
-        # 如果需要字体管理，添加：
-        # self.font_manager = FontManager()
+    def __init__(self, client, device_id: str, profile=None):
+        super().__init__(client, device_id, profile=profile)
+        # 可在此设置自定义字体：
+        # self.custom_font_name = "Hack-Bold"
 
     @classmethod
     def get_params_class(cls) -> Type[BaseModel]:
@@ -139,7 +270,7 @@ class MyImageView(ImageView):
 
     def _generate_image(self, params: MyCustomParams) -> bytes:
         """生成图像的核心逻辑"""
-        # 实现图像生成逻辑
+        # 实现图像生成逻辑，布局请使用 self._sz(...) / self._py(...) 自适应分辨率
         # 返回 PNG 格式的字节数据
         pass
 
@@ -150,7 +281,7 @@ class MyImageView(ImageView):
             # 生成图像
             image_data = self._generate_image(custom_params)
 
-            # 创建 ImageParams 并调用父类方法
+            # 创建 ImageParams 并调用父类方法（父类会转成中性 ImagePayload 再发送）
             image_params = ImageParams(
                 image_data=image_data,
                 link=custom_params.link,
@@ -273,11 +404,34 @@ python main.py push mydevice my_custom --my-param "test value"
 
 #### 图像 View 开发注意事项
 
-- 图像尺寸固定为 296x152 像素
+- 图像尺寸按设备平台决定：Quote/0 为 296x152，Zectrix Note 4 为 400x300
+- 平台分辨率通过构造函数 `profile=` 传入，ViewFactory 会自动传递
+- 使用 `_sz(base)` 让字体/间距按 296x152 基准缩放（自动适应分辨率）
+- 使用 `_py(ratio)` 用比例表示行 Y 坐标（如 `_py(0.21)`），避免硬编码像素
 - 使用 1-bit 模式 (黑白) 以适配 e-ink 显示器
 - 支持中文字体渲染时使用 FontManager
 - 实现适当的文本换行和字体大小调整
 - 包含时间戳等有用信息
+
+### 平台系统（厂商抽象）
+
+厂商实现完全分离，每个厂商一个独立包，互不依赖：
+
+- `platforms/base.py`: 定义中性 `ImagePayload`/`TextPayload` 和 `PlatformClient` 抽象契约
+- `platforms/quote0/`: Quote/0 厂商（DotClient + JSON base64 模型 + Quote0Profile）
+- `platforms/zectrix/`: Zectrix 厂商（ZectrixClient + multipart 模型 + Note4Profile）
+- `platforms/registry.py`: `PlatformRegistry` 工厂，按 `platform` 名称解析出 client 类和 profile
+
+**关键解耦**：View 层只构建厂商无关的中性 `ImagePayload`/`TextPayload`，各厂商 client 负责转换成自己的 wire 格式。新增厂商时无需改动任何 view。
+
+### 添加新的平台/厂商
+
+1. 在 `dotmate/platforms/<name>/` 下创建子包，包含：
+   - `client.py`: 继承 `PlatformClient`，实现 `display_image`（把中性 payload 转为厂商 wire 格式）
+   - `models.py`: 厂商专用的请求/响应模型（不要跨厂商 import）
+   - `profile.py`: 一个 `PlatformProfile`（分辨率 + `supports_text`/`supports_image` 能力）
+2. 在 `PlatformRegistry._platforms` 中注册（名称 -> client 类, profile）
+3. 在 YAML 配置的 `platforms:` 下添加该厂商的配置段
 
 ### 字体系统
 
@@ -359,13 +513,16 @@ class MyTitleView(TitleImageView):
 
 配置文件的数据模型定义在 `dotmate/config/models.py` 中：
 
-- `Config`: 主配置类，包含 API 密钥和设备列表
-- `Device`: 设备配置，包含名称、设备ID和调度任务
+- `Config`: 主配置类，包含 `platforms`（按厂商分组的凭证）和设备列表
+- `Device`: 设备配置，包含名称、设备ID、`platform`（厂商）和调度任务
 - `Schedule`: 调度任务配置，包含 Cron 表达式、消息类型和参数
+- `PlatformConfig`: 单个平台的配置（如 api_key）
 
-### API 客户端
+加载时会做能力校验：在仅图片平台（如 zectrix）上配置 text 任务会在加载时直接报错。
 
-API 客户端位于 `dotmate/api/api.py`，提供与设备通信的接口。
+### 平台客户端
+
+平台客户端位于 `dotmate/platforms/`，是厂商抽象层。各厂商实现互不依赖，统一通过 `PlatformRegistry` 工厂创建。
 
 ### 视图系统
 

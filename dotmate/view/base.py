@@ -1,13 +1,21 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Type
+from typing import Any, ClassVar, Dict, Type
 from pydantic import BaseModel
-from dotmate.api.api import DotClient
+
+from dotmate.platforms.base import PlatformClient
 
 
 class BaseView(ABC):
-    """Base class for all view handlers."""
+    """Base class for all view handlers.
 
-    def __init__(self, client: DotClient, device_id: str):
+    Class attribute ``requires_text`` declares whether a view needs the text
+    display capability. The config validator uses this to reject text-based
+    scenarios on image-only platforms at load time.
+    """
+
+    requires_text: ClassVar[bool] = False
+
+    def __init__(self, client: PlatformClient, device_id: str):
         self.client = client
         self.device_id = device_id
 

@@ -210,4 +210,4 @@ class FontManager:
 
         # Check if it's specifically the default PIL font type
         default_font = ImageFont.load_default()
-        return type(font) == type(default_font)
+        return type(font) is type(default_font)
