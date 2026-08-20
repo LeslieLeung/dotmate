@@ -11,17 +11,17 @@ __pycache__
 *.pyo
 *.pyd
 .Python
-build/
+/build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
-var/
+/var/
 wheels/
 *.egg-info/
 .installed.cfg
@@ -52,9 +52,14 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Logs and runtime data
 logs/
+data/
 *.log
+
+# Frontend build artifacts (built in the Docker frontend stage)
+web/frontend/node_modules/
+web/frontend/dist/
 
 # Temporary files
 *.tmp

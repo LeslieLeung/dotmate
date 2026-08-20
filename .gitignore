@@ -20,6 +20,9 @@ wheels/
 
 config.yaml
 
+# Local env (Docker ADMIN_TOKEN, etc.)
+.env
+
 # Database
 data/
 

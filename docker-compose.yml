@@ -1,12 +1,31 @@
-version: '3.8'
-
 services:
+  # YAML daemon: docker compose up -d
   dotmate:
     image: ghcr.io/${GITHUB_REPOSITORY:-leslieleung/dotmate}:latest
+    build: .
     container_name: dotmate
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./logs:/app/logs
     environment:
-      - TZ=${TZ:-UTC}
+      TZ: ${TZ:-UTC}
+
+  # Web admin: copy .env.example to .env, set ADMIN_TOKEN, then
+  # docker compose --profile web up -d web
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY:-leslieleung/dotmate}:latest
+    build: .
+    container_name: dotmate-web
+    profiles: ["web"]
+    restart: unless-stopped
+    command: [".venv/bin/python", "main.py", "web", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${DOTMATE_WEB_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      TZ: ${TZ:-UTC}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      DOTMATE_DB_PATH: /app/data/dotmate.db
