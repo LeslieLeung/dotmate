@@ -6,6 +6,10 @@
 dotmate/
 ├── main.py                      # 主程序入口
 ├── config.example.yaml          # 配置文件模板
+├── Dockerfile                   # 多阶段构建（前端 dist + Python 运行时）
+├── docker-compose.yml           # daemon 默认；`--profile web` 启动 Web UI
+├── docker-entrypoint.sh         # 容器启动时校正 data/logs 目录权限
+├── .env.example                 # Docker Web 模式的 ADMIN_TOKEN 模板
 ├── pyproject.toml               # 项目依赖配置
 ├── dotmate/
 │   ├── api/
@@ -45,12 +49,17 @@ dotmate/
     ├── backend/                 # FastAPI 后端
     │   ├── app.py               # FastAPI 应用入口
     │   ├── db.py                # SQLite 数据库配置
+    │   ├── device_models.py     # 硬件型号与显示能力注册表
     │   ├── models.py            # SQLModel 数据模型
     │   ├── schemas.py           # Pydantic 请求/响应模型
-    │   ├── scheduler.py         # 后台调度器
+    │   ├── schedule_types.py    # 动态任务表单元数据与校验
+    │   ├── scheduler.py         # SQLite 驱动的后台调度器
+    │   ├── status_worker.py     # 设备状态轮询与缓存
+    │   ├── vendors.py           # Web 远程管理 Vendor 注册表
     │   └── routes/              # 管理端 API 路由
     └── frontend/                # React + shadcn/ui 前端
-        └── src/                 # 页面、组件和 API 客户端
+        ├── src/                 # 页面、组件、i18n 和 API 客户端
+        └── test/                # Vitest + Testing Library 测试
 ```
 
 ## 开发环境搭建
@@ -72,7 +81,7 @@ uv sync
 
 # 安装前端依赖
 cd web/frontend
-npm install
+npm ci
 cd ../..
 ```
 
@@ -129,14 +138,76 @@ make web   # 生产模式（自动构建前端）
 |--------|------|--------|
 | `ADMIN_TOKEN` | 管理面板认证 Token；非本机监听时必填 | 空（仅允许本机免认证） |
 | `DOTMATE_DB_PATH` | SQLite 数据库路径 | `data/dotmate.db` |
+| `DOTMATE_WEB_PORT` | Docker Compose 映射到宿主机的 Web 端口 | `8000` |
+| `TZ` | 容器时区 | `UTC` |
+
+##### Docker 部署
+
+发布镜像通过多阶段构建打包 `web/frontend/dist`，同一镜像可运行 YAML daemon 或 Web 管理面板。Web 模式把设备和任务写在 SQLite 里，**必须把数据库目录挂载到容器外**，否则重建或更新容器后配置会丢失。
+
+```bash
+# Web UI：SQLite 持久化到 ./data/dotmate.db
+cp .env.example .env   # 填写 ADMIN_TOKEN
+docker compose --profile web up -d web
+
+# YAML daemon：继续使用 config.yaml，不启动 Web
+docker compose up -d
+```
+
+Compose 中 Web 服务会：
+
+- 将 `./data` 挂载到 `/app/data`，并设置 `DOTMATE_DB_PATH=/app/data/dotmate.db`
+- 映射 `8000` 端口，并以 `--host 0.0.0.0` 启动（因此 `ADMIN_TOKEN` 必填）
+- 不挂载 `config.yaml`；Web 与 daemon 配置互不导入
+
+`docker-entrypoint.sh` 会在启动时创建 `data/`、`logs/` 并把所有权交给容器内的 `app` 用户，避免 Linux 宿主机 bind mount 导致 SQLite 无法写入。直接 `docker run` 时同样需要挂载数据目录、设置 `ADMIN_TOKEN`，并显式传入 `.venv/bin/python main.py web --host 0.0.0.0`。
+
+停止 Web 请用 `docker compose --profile web stop web`。`docker compose down` 会拆除同一 Compose 项目里的全部容器，包括正在运行的 YAML daemon。
+
+本地改完前端或后端后需要 `docker compose --profile web build web` 才会进入镜像；只重启容器不会更新已打包的 `dist`。
+
+##### Web 运行时架构
+
+Web 模式与 YAML 模式是两套独立的配置和调度运行时：
+
+| 模式 | 配置源 | 调度器 | 界面 |
+|------|--------|----------|------|
+| `daemon` / `push` | `config.yaml` | `BlockingScheduler` | 无 |
+| `web` | SQLite（默认 `data/dotmate.db`） | `BackgroundScheduler` + 设备状态 worker | FastAPI 托管 `web/frontend/dist` |
+| `dev` | SQLite | 同 Web 模式 | FastAPI API + Vite HMR |
+
+`python main.py web` 会依次初始化数据库、加载调度任务、启动状态 worker，然后运行 Uvicorn。`python main.py dev` 会额外启动 Vite，并在退出时统一停止子进程和后台任务。直接运行 `uvicorn web.backend.app:app` 只会提供 API/静态页，不会启动调度器或状态 worker。
+
+Web 数据模型由 SQLModel 定义：
+
+- `Settings`：全局 API 请求间隔
+- `ApiCredential`：按 vendor 分组的 API Key，同 vendor 下名称和 Key 唯一
+- `Device`：关联凭据和硬件型号，保存 Overlay 选项
+- `Schedule`：保存 Cron、View 类型和 JSON 参数
+- `DeviceStatusRecord`：设备状态缓存、刷新策略和失败退避状态
+
+数据库启动时会执行只增量的 Schema 迁移；对未知 vendor 或型号/vendor 不匹配的旧数据会中止迁移，不会静默删除数据。
+
+Web 层把「云 API 厂商」和「硬件显示能力」分开建模：`vendors.py` 描述设备发现、状态、设置等远程能力，`device_models.py` 描述分辨率、文本/图片、Overlay 和 Note 4 页号等显示能力。当前映射为 `mindreset -> quote0` 和 `zectrix -> note4`。
+
+`schedule_types.py` 从 View 的 Pydantic 参数模型生成表单 Schema，再按设备型号过滤不支持的任务和字段。新建/修改任务时，后端会重新做 Pydantic 校验、设备能力校验和 Cron 冲突检查；持久化成功后会原子替换调度快照，失败时回滚数据库变更。
+
+##### 认证与开发边界
+
+- `ADMIN_TOKEN` 为空时 API 不要求认证，因此入口点禁止在这种状态下绑定非回环地址。
+- 设置 `ADMIN_TOKEN` 后，除 `/api/auth/status` 外的管理 API 均使用 `Authorization: Bearer <token>`。
+- 生产模式必须先生成 `web/frontend/dist/index.html`；`python main.py web` 缺少构建产物时会拒绝启动。
+- Vite 只允许 `localhost:5173` 和 `127.0.0.1:5173` 跨域访问 API；非默认部署需要同步调整 CORS 策略。
 
 ##### API 端点
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/api/auth/status` | 查询是否需要认证以及当前 Token 是否有效 |
 | GET | `/api/settings` | 获取全局设置 |
 | PUT | `/api/settings` | 更新全局设置 |
 | GET | `/api/vendors` | 获取支持的 Vendor 与能力 |
+| GET | `/api/device-models` | 获取硬件型号与显示能力，可用 `vendor` 过滤 |
 | GET | `/api/api-keys` | 获取已绑定 API Key（仅返回掩码） |
 | POST | `/api/api-keys/batch` | 批量绑定 API Key 并导入设备 |
 | POST | `/api/api-keys/sync-all` | 同步全部 API Key 的设备 |
@@ -156,11 +227,15 @@ make web   # 生产模式（自动构建前端）
 | GET | `/api/devices/{id}/remote/timezones` | 获取 Vendor 支持的时区 |
 | POST | `/api/devices/{id}/remote/next` | 切换到下一条设备内容 |
 | GET | `/api/devices/{id}/remote/content` | 获取设备内容列表 |
+| GET | `/api/devices/{id}/schedule-types` | 获取按设备型号过滤的调度表单 Schema |
 | GET | `/api/devices/{id}/schedules` | 获取设备的调度任务 |
 | POST | `/api/devices/{id}/schedules` | 创建调度任务 |
 | PUT | `/api/devices/schedules/{id}` | 更新调度任务 |
 | DELETE | `/api/devices/schedules/{id}` | 删除调度任务 |
-| GET | `/api/schema/schedule-types` | 获取调度类型 Schema |
+| POST | `/api/devices/schedules/{id}/run` | 立即执行调度任务 |
+| GET | `/api/schema/schedule-types` | 获取不绑定设备的通用调度类型 Schema |
+
+前端默认在 API 请求中添加 `X-Dotmate-Structured-Errors: 1`，以获得本地化所需的错误代码、参数和字段错误；未添加该请求头的 API 调用方仍会收到普通 FastAPI 错误结构。
 
 ##### 前端开发
 
@@ -172,6 +247,10 @@ npm run dev
 
 # 构建生产版本
 npm run build
+
+# 运行前端测试与 lint
+npm test
+npm run lint
 ```
 
 提交前可在项目根目录运行完整检查：
@@ -180,7 +259,7 @@ npm run build
 make check  # 后端测试、前端测试、lint 和生产构建
 ```
 
-前端开发服务器运行在 `http://localhost:5173`，会自动代理 API 请求到后端 `http://localhost:8000`。
+前端开发服务器运行在 `http://localhost:5173`，会自动代理 API 请求到后端 `http://localhost:8000`。可用 `DOTMATE_BACKEND_URL` 修改 Vite 代理目标；通常应优先从项目根目录运行 `python main.py dev`，以确保后台调度器和状态 worker 一起启动。
 
 ## 扩展开发
 
@@ -349,24 +428,30 @@ python main.py demo my_custom --my-param "test value" --output "./demos"
 
 需要更新以下文件，确保新 View 类型的配置示例、命令行用法和效果图片都被正确记录。
 
-1. **更新 `config.example.yaml`**：
+1. **适配 Web 调度表单**：
+   - 在 `web/backend/schedule_types.py` 的 `SCHEDULE_TYPE_METADATA` 中添加类型标签、说明、摘要字段和表单字段覆盖
+   - 如果该类型无法在 Web 中安全编辑，显式设置 `web_editable=False`
+   - 确认 Quote/0 和 Note 4 的字段过滤符合 `DeviceModelDefinition.allowed_image_fields`
+   - 在 `web/frontend/src/i18n/metadata.ts` 和 `resources.ts` 中添加中英文名称、字段和错误文案
+
+2. **更新 `config.example.yaml`**：
    - 在对应设备的 `schedules` 下添加新 View 类型的完整配置示例
    - 包含所有必填参数和常用可选参数
    - 添加参数注释说明
 
-2. **更新 `README.md`**：
+3. **更新 `README.md`**：
    - 在「效果展示」部分添加效果图片引用：`<img src="demos/my_custom.png" width="400" alt="描述">`
    - 在「手动发送消息」部分添加 `push` 命令使用示例
    - 在「生成 Demo 图片」部分添加 `demo` 命令使用示例
    - 在「消息类型」部分添加新类型的详细说明，包含参数列表和效果图片
 
-3. **更新 `CLAUDE.md`**：
+4. **更新 `CLAUDE.md`**：
    - 在 View System 描述中更新支持的 View 类型列表
    - 在 `push` 命令示例中添加新类型的命令行用法
    - 在 `demo` 命令示例中添加新类型的命令行用法
    - 在配置结构示例中添加新类型的 YAML 配置
 
-4. **更新 `DEVELOPMENT.md`**：
+5. **更新 `DEVELOPMENT.md`**：
    - 在项目结构树中添加新的视图文件
    - 如有新增字体分配，更新「当前字体分配」部分
 
@@ -532,17 +617,30 @@ class MyTitleView(TitleImageView):
 
 ## 测试
 
-目前项目尚未包含测试套件。建议在开发新功能时：
+项目同时包含 Pytest 后端/CLI 测试和 Vitest 前端测试。常用命令：
 
-1. 使用 `python main.py push` 命令手动测试新的消息类型
-2. 验证配置文件解析是否正确
-3. 确保定时任务调度正常工作
+```bash
+# 完整检查：后端测试 + 前端测试 + 前端 lint + 生产构建
+make check
+
+# 单独运行
+make test-backend
+make test-frontend
+make lint-frontend
+make build-frontend
+```
+
+后端测试覆盖 CLI 参数与离线执行、平台客户端、Overlay、Web CRUD、认证、调度热加载、设备状态 worker 和 Zectrix 客户端。前端测试覆盖登录、设备/凭据管理、调度表单、设备详情、多语言和基础组件行为。
+
+修改 Web 后端时优先使用测试中的临时 SQLite 数据库和 mock vendor client，避免读写真实 `data/dotmate.db` 或调用设备云 API。修改 View 或 CLI 后，除自动化测试外，可再用 `python main.py demo` 做图像视觉检查。
 
 ## 代码规范
 
 - 使用 Python 3.12+ 的类型提示
 - 遵循 PEP 8 代码风格
 - 使用 Pydantic 进行数据验证
+- 前端使用 TypeScript，提交前通过 Oxlint、Vitest 和生产构建
+- 用户可见文案同步维护 `zh-CN` 和 `en-US` 翻译，不在组件中写死文本
 - 保持代码简洁和可读性
 
 ## 贡献指南

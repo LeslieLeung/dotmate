@@ -8,6 +8,9 @@ Dotmate 是一个用于管理墨水屏消息推送的调度器，支持 [Quote/0
 - 💬 **多种消息类型**：支持文本消息、工作倒计时、代码状态、图片消息、标题图片生成和 Umami 统计等多种消息类型
 - 📱 **多设备型号**：Quote/0 与 Zectrix Note 4，按设备类型自动选择分辨率与 API
 - 🎯 **多设备管理**：支持管理多个设备，每个设备可配置独立的任务调度
+- 🖥️ **Web 管理面板**：在浏览器中管理 API Key、设备、调度任务和远程设备设置
+- 🔑 **多凭据与设备同步**：可批量绑定 MindReset/Zectrix API Key，自动导入并去重设备
+- 🌐 **中英文界面**：Web UI 支持简体中文、英文和跟随系统语言
 - 🔧 **灵活配置**：使用 YAML 配置文件管理设备和任务
 - 🚀 **即时推送**：支持手动触发消息推送
 
@@ -35,40 +38,85 @@ Dotmate 是一个用于管理墨水屏消息推送的调度器，支持 [Quote/0
 
 ### 方式一：Docker Compose（推荐）
 
+同一镜像支持 Web 管理面板和 YAML daemon。两种模式相互独立，Web 模式使用 SQLite，不会读取 `config.yaml`。
+
+#### Web 管理面板
+
+设备和调度任务保存在 SQLite 中，必须把 `data/` 目录挂载到容器内，否则重建容器后配置会丢失。
+
 1. 克隆项目：
 ```bash
 git clone https://github.com/leslieleung/dotmate
 cd dotmate
 ```
 
-2. 复制配置文件模板：
+2. 设置管理 Token（容器对外监听，必须设置）：
+```bash
+cp .env.example .env
+# 编辑 .env，将 ADMIN_TOKEN 设为足够长的随机值，例如：
+# openssl rand -hex 32
+```
+
+3. 启动服务：
+```bash
+docker compose --profile web up -d web
+
+# 查看日志
+docker compose --profile web logs -f web
+
+# 停止 Web 容器（不要用 down，以免误停同项目里的 YAML daemon）
+docker compose --profile web stop web
+```
+
+4. 打开 http://localhost:8000 ，在「设置」页绑定 MindReset 或 Zectrix API Key 并同步设备。
+
+SQLite 文件位于宿主机 `./data/dotmate.db`（可用 `DOTMATE_DB_PATH` 修改容器内路径，但应仍指向已挂载的 `data/` 目录）。可用 `DOTMATE_WEB_PORT` 修改宿主机端口，默认 `8000`。更新或重建容器前请备份 `data/`。若本地仍是旧镜像，先执行 `docker compose --profile web pull web` 或 `docker compose --profile web build web`。
+
+#### YAML 守护进程
+
+不需要 Web UI、只用 `config.yaml` 跑定时任务时：
+
+1. 克隆项目后复制并编辑配置：
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-3. 编辑配置文件 `config.yaml`，填入你的 API 密钥和设备信息。
-
-4. 启动服务：
+2. 启动服务：
 ```bash
-# 启动容器
-docker-compose up -d
+docker compose up -d
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 停止服务
-docker-compose down
+docker compose down
 ```
 
 ### 方式二：直接使用 Docker
 
-如果你只想快速运行，可以直接使用 Docker 命令：
+如果你只想快速运行，可以直接使用 Docker 命令。
+
+Web 管理面板（持久化 SQLite）：
 
 ```bash
-# 拉取镜像
 docker pull ghcr.io/leslieleung/dotmate:latest
 
-# 运行容器（需要提前准备好 config.yaml）
+mkdir -p data logs
+docker run -d \
+  --name dotmate-web \
+  --restart unless-stopped \
+  -p 8000:8000 \
+  -e ADMIN_TOKEN="your-long-random-token" \
+  -e DOTMATE_DB_PATH=/app/data/dotmate.db \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  ghcr.io/leslieleung/dotmate:latest \
+  .venv/bin/python main.py web --host 0.0.0.0 --port 8000
+```
+
+YAML 守护进程（需要提前准备好 `config.yaml`）：
+
+```bash
 docker run -d \
   --name dotmate \
   --restart unless-stopped \
@@ -79,10 +127,8 @@ docker run -d \
 # 查看日志
 docker logs -f dotmate
 
-# 停止容器
+# 停止并删除容器
 docker stop dotmate
-
-# 删除容器
 docker rm dotmate
 ```
 
@@ -90,8 +136,8 @@ docker rm dotmate
 
 #### 环境要求
 - Python >= 3.12
+- Node.js >= 20.19（仅构建/开发 Web UI 时需要）
 - uv 包管理器（推荐）
-- Pillow 库（用于图片处理）
 
 #### 安装
 
@@ -100,21 +146,24 @@ docker rm dotmate
 git clone https://github.com/leslieleung/dotmate
 cd dotmate
 
-## 安装环境
+# 安装 Python 依赖
 uv venv
-
-# 安装依赖
 uv sync
+
+# 安装 Web UI 依赖
+cd web/frontend
+npm ci
+cd ../..
 ```
 
-#### 配置
+#### 配置（daemon / push 模式）
 
 1. 复制配置文件模板：
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-2. 编辑配置文件 `config.yaml`，填入你的 API 密钥和设备信息。
+2. 编辑配置文件 `config.yaml`，填入你的 API 密钥和设备信息。Web 模式不使用这个文件，可直接跳过此步。
 
 #### 运行
 
@@ -130,11 +179,35 @@ python main.py
 ##### Web 管理面板
 
 ```bash
+# 首次使用先安装前端依赖
+cd web/frontend && npm ci && cd ../..
+
+# 构建前端并启动生产模式服务
 make web
 # 打开 http://localhost:8000
 ```
 
-`make web` 会先构建前端，再启动仅监听本机的管理服务。若要允许其他主机访问，请先设置 `ADMIN_TOKEN`，再使用 `python main.py web --host 0.0.0.0`。Web 模式使用 SQLite 保存配置，支持一次绑定多个带 vendor 的 API Key、从每个 Key 自动导入并去重设备、按 Key 管理任务，以及读取 MindReset 设备设置、切换下一条内容和查看设备内容列表。后台状态 worker 会按设备的供电/电池刷新间隔自动缓存电量、Wi-Fi、固件和渲染状态，也可为每台设备覆盖轮询间隔或从界面手动刷新。当前 vendor 为 `mindreset`；YAML/CLI 模式仍使用配置文件中的单个 `api_key`。
+`make web` 会先构建前端，再启动仅监听本机的 FastAPI 管理服务。首次进入「设置」页后绑定 MindReset 或 Zectrix API Key，即可同步设备；不需要先创建 `config.yaml`。
+
+Web UI 目前支持：
+
+- 批量绑定、重命名、同步 API Key，并按 vendor 和硬件型号校验设备
+- 创建、编辑、删除设备与调度任务；任务表单会按 Quote/0 或 Note 4 的能力动态调整
+- 保存任务时检查同一设备的 Cron 冲突，保存后热加载调度器，也可立即执行单个任务
+- 缓存并展示支持该能力的设备状态，支持手动刷新或设置单设备轮询间隔
+- 管理 MindReset 设备的时区、休眠时段和刷新间隔，切换下一条内容并查看内容列表
+- 在简体中文、英文和「跟随系统」之间切换
+
+Web 模式的配置保存在 SQLite `data/dotmate.db` 中，与 `config.yaml` 驱动的 daemon/push 模式相互独立，不会自动导入 YAML 配置。Zectrix 目前支持设备发现与图片任务；设备状态和远程设置由 MindReset API 提供。
+
+若要允许其他主机访问，必须设置管理 Token：
+
+```bash
+export ADMIN_TOKEN="your-long-random-token"
+python main.py web --host 0.0.0.0 --port 8000
+```
+
+启用 Token 后，浏览器会显示登录页，后续 API 请求通过 Bearer Token 认证。可用 `DOTMATE_DB_PATH` 指定其他 SQLite 路径。
 
 ##### 手动发送消息
 ```bash
