@@ -7,7 +7,7 @@ dotmate/
 ├── main.py                      # 主程序入口
 ├── config.example.yaml          # 配置文件模板
 ├── Dockerfile                   # 多阶段构建（前端 dist + Python 运行时）
-├── docker-compose.yml           # daemon 默认；`--profile web` 启动 Web UI
+├── docker-compose.yml           # `--profile web` / `--profile daemon` 互斥启动
 ├── docker-entrypoint.sh         # 容器启动时校正 data/logs 目录权限
 ├── .env.example                 # Docker Web 模式的 ADMIN_TOKEN 模板
 ├── pyproject.toml               # 项目依赖配置
@@ -146,12 +146,12 @@ make web   # 生产模式（自动构建前端）
 发布镜像通过多阶段构建打包 `web/frontend/dist`，同一镜像可运行 YAML daemon 或 Web 管理面板。Web 模式把设备和任务写在 SQLite 里，**必须把数据库目录挂载到容器外**，否则重建或更新容器后配置会丢失。
 
 ```bash
-# Web UI：SQLite 持久化到 ./data/dotmate.db
+# Web UI：SQLite 持久化到 ./data/dotmate.db（不读取、不挂载 config.yaml）
 cp .env.example .env   # 填写 ADMIN_TOKEN
-docker compose --profile web up -d web
+docker compose --profile web up -d
 
 # YAML daemon：继续使用 config.yaml，不启动 Web
-docker compose up -d
+docker compose --profile daemon up -d
 ```
 
 Compose 中 Web 服务会：
@@ -162,9 +162,9 @@ Compose 中 Web 服务会：
 
 `docker-entrypoint.sh` 会在启动时创建 `data/`、`logs/` 并把所有权交给容器内的 `app` 用户，避免 Linux 宿主机 bind mount 导致 SQLite 无法写入。直接 `docker run` 时同样需要挂载数据目录、设置 `ADMIN_TOKEN`，并显式传入 `.venv/bin/python main.py web --host 0.0.0.0`。
 
-停止 Web 请用 `docker compose --profile web stop web`。`docker compose down` 会拆除同一 Compose 项目里的全部容器，包括正在运行的 YAML daemon。
+停止 Web 请用 `docker compose --profile web stop`。`docker compose down` 会拆除同一 Compose 项目里的全部容器，包括正在运行的 YAML daemon。
 
-本地改完前端或后端后需要 `docker compose --profile web build web` 才会进入镜像；只重启容器不会更新已打包的 `dist`。
+本地改完前端或后端后需要 `docker compose --profile web build` 才会进入镜像；只重启容器不会更新已打包的 `dist`。
 
 ##### Web 运行时架构
 

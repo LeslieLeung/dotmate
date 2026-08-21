@@ -1,9 +1,11 @@
 services:
-  # YAML daemon: docker compose up -d
+  # YAML daemon: docker compose --profile daemon up -d
+  # Not started with the web profile, so Compose never mounts config.yaml.
   dotmate:
     image: ghcr.io/${GITHUB_REPOSITORY:-leslieleung/dotmate}:latest
     build: .
     container_name: dotmate
+    profiles: ["daemon"]
     restart: unless-stopped
     volumes:
       - ./config.yaml:/app/config.yaml:ro
@@ -12,7 +14,7 @@ services:
       TZ: ${TZ:-UTC}
 
   # Web admin: copy .env.example to .env, set ADMIN_TOKEN, then
-  # docker compose --profile web up -d web
+  # docker compose --profile web up -d
   web:
     image: ghcr.io/${GITHUB_REPOSITORY:-leslieleung/dotmate}:latest
     build: .

@@ -59,18 +59,18 @@ cp .env.example .env
 
 3. 启动服务：
 ```bash
-docker compose --profile web up -d web
+docker compose --profile web up -d
 
 # 查看日志
-docker compose --profile web logs -f web
+docker compose --profile web logs -f
 
 # 停止 Web 容器（不要用 down，以免误停同项目里的 YAML daemon）
-docker compose --profile web stop web
+docker compose --profile web stop
 ```
 
 4. 打开 http://localhost:8000 ，在「设置」页绑定 MindReset 或 Zectrix API Key 并同步设备。
 
-SQLite 文件位于宿主机 `./data/dotmate.db`（可用 `DOTMATE_DB_PATH` 修改容器内路径，但应仍指向已挂载的 `data/` 目录）。可用 `DOTMATE_WEB_PORT` 修改宿主机端口，默认 `8000`。更新或重建容器前请备份 `data/`。若本地仍是旧镜像，先执行 `docker compose --profile web pull web` 或 `docker compose --profile web build web`。
+SQLite 文件位于宿主机 `./data/dotmate.db`（可用 `DOTMATE_DB_PATH` 修改容器内路径，但应仍指向已挂载的 `data/` 目录）。可用 `DOTMATE_WEB_PORT` 修改宿主机端口，默认 `8000`。更新或重建容器前请备份 `data/`。若本地仍是旧镜像，先执行 `docker compose --profile web pull` 或 `docker compose --profile web build`。
 
 #### YAML 守护进程
 
@@ -83,13 +83,13 @@ cp config.example.yaml config.yaml
 
 2. 启动服务：
 ```bash
-docker compose up -d
+docker compose --profile daemon up -d
 
 # 查看日志
-docker compose logs -f
+docker compose --profile daemon logs -f
 
 # 停止服务
-docker compose down
+docker compose --profile daemon stop
 ```
 
 ### 方式二：直接使用 Docker
